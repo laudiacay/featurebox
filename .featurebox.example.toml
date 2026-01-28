@@ -1,0 +1,79 @@
+# Example featurebox configuration
+# Copy to .featurebox.toml in your repo root and customize
+
+[project]
+name = "myproject"
+main_repo = "~/code/myproject"
+worktree_base = "~/code/myproject-worktrees"
+base_branch = "main"
+github_repo = "username/myproject"  # For gh CLI integration
+
+[linear]
+enabled = true
+# LINEAR_API_KEY should be set in environment
+
+[graphite]
+enabled = false        # Set to true if using Graphite for stacking
+trunk = "main"
+
+[tmux]
+editor = "nvim ."      # Command to run in first pane
+side_command = "claude" # Command to run in second pane
+layout = "vertical"    # "vertical" or "horizontal"
+
+# Lifecycle commands - run in worktree directory
+[lifecycle]
+on_start = ["just up"]     # Run after tmux session created
+on_cleanup = ["just down"]  # Run before worktree removal
+
+# For complex post-create setup, use this format:
+# post_create = [
+#     { cmd = "npm install", dirs = [] },
+#     { cmd = "terraform init -backend=true -reconfigure", dirs = [
+#         "terraform/networking",
+#         "terraform/shared",
+#         "terraform/environments/dev",
+#     ]}
+# ]
+
+# Focus commands - for claiming shared resources
+[focus]
+on_focus = ["just docker expose-db"]  # Run when this worktree gains focus
+on_unfocus = []                        # Run when this worktree loses focus
+
+# Per-branch pattern overrides for focus commands
+# [focus.overrides."claudia-*"]
+# on_focus = ["just docker expose-db", "just connect dev-tunnel"]
+
+# [focus.overrides."test-*"]
+# on_focus = []  # No focus commands for test branches
+
+[symlinks]
+# Files to symlink from main repo to worktree
+paths = [
+    ".env.local",
+    # ".claude/settings.local.json",
+]
+
+[docker]
+enabled = false
+compose_file = "docker-compose.yml"
+
+# TUI column hooks - scripts that output status for each worktree
+# Each hook receives WORKTREE_PATH and BRANCH_NAME as env vars
+# Should output a short string (will be truncated to fit)
+
+# [[tui.columns]]
+# name = "CI"
+# hook = "gh run list --branch $BRANCH_NAME --limit 1 --json conclusion -q '.[0].conclusion // \"pending\"'"
+# color_map = { success = "green", failure = "red", pending = "yellow" }
+
+# [[tui.columns]]
+# name = "Review"
+# hook = "gh pr view $BRANCH_NAME --json reviewDecision -q '.reviewDecision // \"none\"'"
+# color_map = { APPROVED = "green", CHANGES_REQUESTED = "red", none = "dim" }
+
+# [[tui.columns]]
+# name = "Conflicts"
+# hook = ".featurebox/hooks/check-conflicts.sh"  # Custom script
+# color_map = { clean = "green", conflicts = "red" }

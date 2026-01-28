@@ -1,0 +1,98 @@
+name: Update Homebrew Tap
+
+on:
+  repository_dispatch:
+    types: [update-formula]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.1.0)'
+        required: true
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          # Remove 'v' prefix if present
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Wait for PyPI
+        run: |
+          echo "Waiting for PyPI to have version ${{ steps.version.outputs.version }}..."
+          for i in {1..30}; do
+            if curl -s "https://pypi.org/pypi/featurebox/${{ steps.version.outputs.version }}/json" | grep -q '"version"'; then
+              echo "Package found on PyPI"
+              exit 0
+            fi
+            echo "Attempt $i: Package not yet available, waiting..."
+            sleep 10
+          done
+          echo "Package not found on PyPI after 5 minutes"
+          exit 1
+
+      - name: Get package info
+        id: package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          URL="https://files.pythonhosted.org/packages/source/f/featurebox/featurebox-${VERSION}.tar.gz"
+
+          # Download and calculate SHA256
+          curl -sL "$URL" -o package.tar.gz
+          SHA256=$(sha256sum package.tar.gz | cut -d' ' -f1)
+
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: laudiacay/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          cd homebrew-tap
+
+          cat > Formula/featurebox.rb << 'EOF'
+          class Featurebox < Formula
+            include Language::Python::Virtualenv
+
+            desc "Git worktree workflow manager for feature development"
+            homepage "https://github.com/laudiacay/featurebox"
+            url "${{ steps.package.outputs.url }}"
+            sha256 "${{ steps.package.outputs.sha256 }}"
+            license "MIT"
+
+            depends_on "python@3.11"
+            depends_on "gh"
+            depends_on "fzf"
+            depends_on "tmux"
+
+            def install
+              virtualenv_install_with_resources
+            end
+
+            test do
+              system "#{bin}/featurebox", "--version"
+            end
+          end
+          EOF
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add Formula/featurebox.rb
+          git commit -m "featurebox ${{ steps.version.outputs.version }}"
+          git push

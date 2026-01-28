@@ -1,0 +1,421 @@
+"""Main CLI entry point for featurebox."""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from typing import Annotated
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from featurebox import __version__
+from featurebox.completions import generate_bash, generate_fish, generate_zsh, install_completion
+from featurebox.config import (
+    Config,
+    generate_example_config,
+    generate_global_config_example,
+    list_projects,
+    load_config,
+)
+from featurebox.focus import (
+    focus_worktree,
+    get_focus_state,
+    get_focused_branch,
+    unfocus,
+)
+from featurebox.git import list_worktrees
+from featurebox.github import get_branch_from_pr, has_gh_cli
+from featurebox.lifecycle import full_cleanup, full_setup, get_worktree_for_input
+from featurebox.linear import get_branch_from_ticket
+from featurebox.tmux import attach_session, session_exists, session_name_from_branch
+from featurebox.tui import FeatureboxTUI, simple_list
+
+app = typer.Typer(
+    name="featurebox",
+    help="Git worktree workflow manager for feature development",
+    no_args_is_help=True,
+)
+console = Console()
+
+
+def version_callback(value: bool) -> None:
+    if value:
+        console.print(f"featurebox {__version__}")
+        raise typer.Exit()
+
+
+# Global options
+ProjectOption = Annotated[
+    str | None,
+    typer.Option(
+        "--project",
+        "-p",
+        help="Named project from global config (auto-detects if not specified)",
+    ),
+]
+
+ConfigOption = Annotated[
+    Path | None,
+    typer.Option("--config", "-c", help="Path to config file"),
+]
+
+
+def _get_config(project: str | None, config_path: Path | None) -> Config:
+    """Load config with project or path override."""
+    return load_config(path=config_path, project_name=project)
+
+
+@app.callback()
+def main(
+    version: Annotated[
+        bool | None,
+        typer.Option("--version", "-V", callback=version_callback, is_eager=True),
+    ] = None,
+) -> None:
+    """featurebox - Git worktree workflow manager."""
+    pass
+
+
+def _resolve_input_to_branch(input_str: str, config: Config) -> str | None:
+    """Resolve various input formats to a branch name.
+
+    Accepts:
+    - Branch name
+    - Linear ticket (SUP-123 or URL)
+    - GitHub PR (#123 or URL)
+    """
+    if not input_str:
+        return None
+
+    # Check if it looks like a Linear ticket
+    is_linear = (
+        input_str.upper().startswith(("SUP-", "ENG-", "DEV-")) or "linear.app" in input_str
+    )
+    if is_linear and config.linear.enabled:
+        try:
+            return asyncio.run(get_branch_from_ticket(input_str, config.linear.api_key))
+        except Exception as e:
+            console.print(f"[yellow]Could not resolve Linear ticket: {e}[/yellow]")
+            return None
+
+    # Check if it looks like a GitHub PR
+    is_github_pr = (
+        input_str.startswith("#") or input_str.isdigit() or "github.com" in input_str
+    )
+    if is_github_pr and has_gh_cli() and config.project.github_repo:
+        branch = get_branch_from_pr(input_str, config.project.github_repo)
+        if branch:
+            return branch
+
+    # Assume it's a branch name
+    return input_str
+
+
+@app.command()
+def start(
+    input: Annotated[
+        str | None,
+        typer.Argument(help="Linear ticket, PR #, branch name, or URL"),
+    ] = None,
+    base: Annotated[
+        str | None,
+        typer.Option("--base", "-b", help="Base branch to create from"),
+    ] = None,
+    project: ProjectOption = None,
+    config_path: ConfigOption = None,
+) -> None:
+    """Start or resume a feature worktree.
+
+    Creates a new worktree if needed, sets up tmux session, and attaches.
+    If the branch already exists, attaches to existing session.
+    """
+    config = _get_config(project, config_path)
+
+    if not input:
+        # Interactive mode - show TUI and let user pick
+        tui = FeatureboxTUI(config)
+        action, selected = tui.run()
+
+        if action == "launch" and selected:
+            for info in selected:
+                session_name = session_name_from_branch(info.worktree.branch)
+                if session_exists(session_name):
+                    attach_session(session_name)
+                else:
+                    full_setup(info.worktree.branch, config, base)
+        elif action == "cleanup" and selected:
+            for info in selected:
+                full_cleanup(info.worktree, config)
+        return
+
+    # Resolve input to branch name
+    branch = _resolve_input_to_branch(input, config)
+    if not branch:
+        console.print(f"[red]Could not resolve input to branch: {input}[/red]")
+        raise typer.Exit(1)
+
+    # Check if worktree already exists
+    main_repo = config.project.main_repo.expanduser().resolve()
+    worktrees = list_worktrees(main_repo)
+    existing = next((wt for wt in worktrees if wt.branch == branch), None)
+
+    if existing:
+        session_name = session_name_from_branch(branch)
+        if session_exists(session_name):
+            console.print(f"[blue]Attaching to existing session: {session_name}[/blue]")
+            attach_session(session_name)
+        else:
+            full_setup(branch, config, base)
+    else:
+        full_setup(branch, config, base)
+
+
+@app.command()
+def cleanup(
+    input: Annotated[
+        str | None,
+        typer.Argument(help="Branch name, worktree path, or partial match"),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force removal even with uncommitted changes"),
+    ] = False,
+    delete_remote: Annotated[
+        bool,
+        typer.Option("--remote", "-r", help="Also delete remote branch"),
+    ] = False,
+    project: ProjectOption = None,
+    config_path: ConfigOption = None,
+) -> None:
+    """Clean up a feature worktree.
+
+    Stops docker, kills tmux session, removes worktree, and optionally deletes branches.
+    """
+    config = _get_config(project, config_path)
+
+    if not input:
+        # Interactive mode
+        tui = FeatureboxTUI(config)
+        action, selected = tui.run()
+
+        if action == "cleanup" and selected:
+            for info in selected:
+                full_cleanup(info.worktree, config, force=force, delete_remote=delete_remote)
+        return
+
+    # Find matching worktree
+    worktree = get_worktree_for_input(input, config)
+    if not worktree:
+        console.print(f"[red]No worktree found matching: {input}[/red]")
+        raise typer.Exit(1)
+
+    full_cleanup(worktree, config, force=force, delete_remote=delete_remote)
+
+
+@app.command()
+def status(
+    project: ProjectOption = None,
+    config_path: ConfigOption = None,
+) -> None:
+    """Interactive TUI - view all worktrees, multi-select for actions.
+
+    Keys:
+    - j/k or arrows: navigate
+    - space: toggle select
+    - a: select all
+    - enter: launch selected
+    - d: cleanup selected
+    - f: focus selected
+    - r: refresh
+    - q: quit
+    """
+    config = _get_config(project, config_path)
+
+    tui = FeatureboxTUI(config)
+    action, selected = tui.run()
+
+    if action == "launch" and selected:
+        for info in selected:
+            session_name = session_name_from_branch(info.worktree.branch)
+            if session_exists(session_name):
+                attach_session(session_name)
+            else:
+                full_setup(info.worktree.branch, config)
+    elif action == "cleanup" and selected:
+        for info in selected:
+            full_cleanup(info.worktree, config)
+    elif action == "focus" and selected:
+        # Focus the first selected worktree
+        focus_worktree(selected[0].worktree, config, force=True)
+
+
+@app.command(name="list")
+def list_cmd(
+    project: ProjectOption = None,
+    config_path: ConfigOption = None,
+) -> None:
+    """Simple list of worktrees (non-interactive)."""
+    config = _get_config(project, config_path)
+    simple_list(config)
+
+
+@app.command()
+def focus(
+    input: Annotated[
+        str | None,
+        typer.Argument(help="Branch name or worktree path to focus"),
+    ] = None,
+    clear: Annotated[
+        bool,
+        typer.Option("--clear", help="Clear focus (unfocus current worktree)"),
+    ] = False,
+    show: Annotated[
+        bool,
+        typer.Option("--show", "-s", help="Show current focus status"),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force focus switch"),
+    ] = False,
+    project: ProjectOption = None,
+    config_path: ConfigOption = None,
+) -> None:
+    """Switch focus to a worktree, claiming shared resources.
+
+    Focus runs configured commands (like `just docker expose-db`) to claim
+    shared resources like database ports for the selected worktree.
+
+    Only one worktree per project can have focus at a time.
+    """
+    config = _get_config(project, config_path)
+
+    if show or (not input and not clear):
+        # Show current focus status
+        state = get_focus_state(config)
+        if state.branch:
+            console.print(f"[green]Focused:[/green] {state.branch}")
+            console.print(f"[dim]Path: {state.worktree_path}[/dim]")
+            if state.focused_at:
+                console.print(f"[dim]Since: {state.focused_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
+        else:
+            console.print("[dim]No worktree currently has focus[/dim]")
+        return
+
+    if clear:
+        unfocus(config)
+        return
+
+    # Find the worktree to focus
+    worktree = get_worktree_for_input(input, config)
+    if not worktree:
+        console.print(f"[red]No worktree found matching: {input}[/red]")
+        raise typer.Exit(1)
+
+    focus_worktree(worktree, config, force=force)
+
+
+@app.command()
+def projects() -> None:
+    """List configured projects from global config."""
+    project_names = list_projects()
+
+    if not project_names:
+        console.print("[dim]No projects configured in ~/.config/featurebox/config.toml[/dim]")
+        console.print("[dim]Run 'featurebox init --global' to create global config[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Project")
+    table.add_column("Focus")
+
+    for name in project_names:
+        try:
+            config = load_config(project_name=name)
+            focused = get_focused_branch(config)
+            focus_str = f"[green]{focused}[/green]" if focused else "[dim]-[/dim]"
+            table.add_row(name, focus_str)
+        except Exception:
+            table.add_row(name, "[red]error[/red]")
+
+    console.print(table)
+
+
+@app.command()
+def init(
+    path: Annotated[
+        Path | None,
+        typer.Argument(help="Directory to initialize (default: current)"),
+    ] = None,
+    global_config: Annotated[
+        bool,
+        typer.Option("--global", "-g", help="Initialize global config instead"),
+    ] = False,
+) -> None:
+    """Initialize featurebox configuration.
+
+    Without --global: Creates .featurebox.toml in current repo.
+    With --global: Creates ~/.config/featurebox/config.toml with named projects.
+    """
+    if global_config:
+        config_dir = Path.home() / ".config" / "featurebox"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_file = config_dir / "config.toml"
+
+        if config_file.exists():
+            console.print(f"[yellow]Config file already exists: {config_file}[/yellow]")
+            if not typer.confirm("Overwrite?"):
+                raise typer.Exit()
+
+        config_file.write_text(generate_global_config_example())
+        console.print(f"[green]Created {config_file}[/green]")
+        console.print("[dim]Edit the file to add your projects.[/dim]")
+    else:
+        target_dir = path or Path.cwd()
+        config_file = target_dir / ".featurebox.toml"
+
+        if config_file.exists():
+            console.print(f"[yellow]Config file already exists: {config_file}[/yellow]")
+            if not typer.confirm("Overwrite?"):
+                raise typer.Exit()
+
+        config_file.write_text(generate_example_config())
+        console.print(f"[green]Created {config_file}[/green]")
+        console.print("[dim]Edit the file to configure your project settings.[/dim]")
+
+
+@app.command()
+def completions(
+    shell: Annotated[
+        str,
+        typer.Argument(help="Shell to generate completions for (bash, zsh, fish)"),
+    ],
+    install: Annotated[
+        bool,
+        typer.Option("--install", "-i", help="Show installation instructions"),
+    ] = False,
+) -> None:
+    """Generate shell completions for bash/zsh/fish."""
+    shell = shell.lower()
+
+    if install:
+        console.print(install_completion(shell))
+        return
+
+    generators = {
+        "bash": generate_bash,
+        "zsh": generate_zsh,
+        "fish": generate_fish,
+    }
+
+    if shell not in generators:
+        console.print(f"[red]Unknown shell: {shell}[/red]")
+        console.print("Supported: bash, zsh, fish")
+        raise typer.Exit(1)
+
+    print(generators[shell]())
+
+
+if __name__ == "__main__":
+    app()
