@@ -1,5 +1,5 @@
-# Example featurebox configuration
-# Copy to .featurebox.toml in your repo root and customize
+# Example fwts configuration
+# Copy to .fwts.toml in your repo root and customize
 
 [project]
 name = "myproject"
@@ -75,5 +75,5 @@ compose_file = "docker-compose.yml"
 
 # [[tui.columns]]
 # name = "Conflicts"
-# hook = ".featurebox/hooks/check-conflicts.sh"  # Custom script
+# hook = ".fwts/hooks/check-conflicts.sh"  # Custom script
 # color_map = { clean = "green", conflicts = "red" }

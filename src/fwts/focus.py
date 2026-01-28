@@ -1,4 +1,4 @@
-"""Focus switching for featurebox.
+"""Focus switching for fwts.
 
 Focus allows one worktree to "claim" shared resources like database ports,
 environment files, etc. Only one worktree per project can have focus at a time.
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,13 +16,13 @@ from pathlib import Path
 
 from rich.console import Console
 
-from featurebox.config import Config, FocusConfig
-from featurebox.git import Worktree
+from fwts.config import Config, FocusConfig
+from fwts.git import Worktree
 
 console = Console()
 
 # State directory for focus tracking
-STATE_DIR = Path.home() / ".local" / "state" / "featurebox"
+STATE_DIR = Path.home() / ".local" / "state" / "fwts"
 
 
 @dataclass
@@ -143,7 +144,7 @@ def run_focus_commands(
                 cwd=worktree_path,
                 capture_output=True,
                 text=True,
-                env={**subprocess.os.environ, **env},
+                env={**os.environ, **env},
             )
             if result.returncode != 0:
                 console.print(f"  [red]Command failed: {result.stderr}[/red]")
@@ -180,9 +181,7 @@ def focus_worktree(
 
     # Check if another worktree has focus
     if current_state.worktree_path and not force:
-        console.print(
-            f"[yellow]Another worktree has focus: {current_state.branch}[/yellow]"
-        )
+        console.print(f"[yellow]Another worktree has focus: {current_state.branch}[/yellow]")
         console.print("[dim]Use --force to switch focus[/dim]")
         return False
 

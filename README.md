@@ -1,4 +1,4 @@
-# featurebox
+# fwts
 
 Git worktree workflow manager for feature development. Automates creating worktrees, tmux sessions, docker services, and more.
 
@@ -21,15 +21,15 @@ Git worktree workflow manager for feature development. Automates creating worktr
 ### From PyPI
 
 ```bash
-pip install featurebox
+pip install fwts
 # or with uv
-uv tool install featurebox
+uv tool install fwts
 ```
 
 ### From Homebrew
 
 ```bash
-brew install laudiacay/tap/featurebox
+brew install laudiacay/tap/fwts
 ```
 
 ## Quick Start
@@ -37,70 +37,70 @@ brew install laudiacay/tap/featurebox
 1. Initialize global configuration:
 
 ```bash
-featurebox init --global
-# Edit ~/.config/featurebox/config.toml to add your projects
+fwts init --global
+# Edit ~/.config/fwts/config.toml to add your projects
 ```
 
 2. Or initialize per-repo configuration:
 
 ```bash
 cd ~/code/myproject
-featurebox init
-# Edit .featurebox.toml to configure
+fwts init
+# Edit ..fwts.toml to configure
 ```
 
 3. Start working on a feature:
 
 ```bash
 # From a Linear ticket
-featurebox start SUP-123
+fwts start SUP-123
 
 # From a GitHub PR
-featurebox start #456
+fwts start #456
 
 # From a branch name
-featurebox start feature/my-feature
+fwts start feature/my-feature
 
 # Interactive mode - pick from existing worktrees
-featurebox start
+fwts start
 ```
 
 4. View all worktrees:
 
 ```bash
 # Interactive TUI
-featurebox status
+fwts status
 
 # Simple list
-featurebox list
+fwts list
 ```
 
 5. Focus on a worktree (claim shared resources):
 
 ```bash
 # Focus on a branch
-featurebox focus feature/my-feature
+fwts focus feature/my-feature
 
 # Show current focus
-featurebox focus
+fwts focus
 
 # Clear focus
-featurebox focus --clear
+fwts focus --clear
 ```
 
 6. Clean up when done:
 
 ```bash
-featurebox cleanup feature/my-feature
+fwts cleanup feature/my-feature
 # Or interactively
-featurebox cleanup
+fwts cleanup
 ```
 
 ## Configuration
 
 ### Global Config (Multi-Project)
 
-Create `~/.config/featurebox/config.toml` for managing multiple projects:
+Create `~/.config/fwts/config.toml` for managing multiple projects:
 
 ```toml
 # Default project when not in a project directory
@@ -125,7 +125,7 @@ base_branch = "main"
 
 ### Per-Repo Config
 
-Create `.featurebox.toml` in your repo root:
+Create `..fwts.toml` in your repo root:
 
 ```toml
 [project]
@@ -178,28 +178,28 @@ color_map = { success = "green", failure = "red", pending = "yellow" }
 
 ### Per-Worktree Config
 
-Create `.featurebox.local.toml` in a worktree to override settings for that specific worktree. This file is gitignored.
+Create `.fwts.local.toml` in a worktree to override settings for that specific worktree. This file is gitignored.
 
 ### Config Hierarchy
 
 Configuration is loaded and merged in this order (later overrides earlier):
-1. `~/.config/featurebox/config.toml` (global)
-2. `<main_repo>/.featurebox.toml` (per-repo)
-3. `<worktree>/.featurebox.local.toml` (per-worktree)
+1. `~/.config/fwts/config.toml` (global)
+2. `<main_repo>/..fwts.toml` (per-repo)
+3. `<worktree>/.fwts.local.toml` (per-worktree)
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `featurebox start [input]` | Start or resume a feature worktree |
-| `featurebox cleanup [input]` | Clean up worktree, tmux, docker |
-| `featurebox status` | Interactive TUI dashboard |
-| `featurebox list` | Simple worktree list |
-| `featurebox focus [branch]` | Switch focus to a worktree |
-| `featurebox projects` | List configured projects |
-| `featurebox init` | Initialize config file |
-| `featurebox init --global` | Initialize global config |
-| `featurebox completions <shell>` | Generate shell completions |
+| `fwts start [input]` | Start or resume a feature worktree |
+| `fwts cleanup [input]` | Clean up worktree, tmux, docker |
+| `fwts status` | Interactive TUI dashboard |
+| `fwts list` | Simple worktree list |
+| `fwts focus [branch]` | Switch focus to a worktree |
+| `fwts projects` | List configured projects |
+| `fwts init` | Initialize config file |
+| `fwts init --global` | Initialize global config |
+| `fwts completions <shell>` | Generate shell completions |
 
 ### Global Options
 
@@ -209,7 +209,7 @@ All commands support:
 
 ### Aliases
 
-`fb` is an alias for `featurebox`:
+`fb` is an alias for `fwts`:
 
 ```bash
 fb start SUP-123
@@ -252,13 +252,13 @@ Only one worktree per project can have focus at a time. The TUI shows focus stat
 
 ```bash
 # Bash
-eval "$(featurebox completions bash)"
+eval "$(fwts completions bash)"
 
 # Zsh
-eval "$(featurebox completions zsh)"
+eval "$(fwts completions zsh)"
 
 # Fish
-featurebox completions fish > ~/.config/fish/completions/featurebox.fish
+fwts completions fish > ~/.config/fish/completions/fwts.fish
 ```
 
 ## Environment Variables

@@ -1,4 +1,4 @@
-"""Configuration loading and management for featurebox."""
+"""Configuration loading and management for fwts."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any
 if sys.version_info >= (3, 11):
     import tomllib
 else:
-    import tomli as tomllib
+    import tomli as tomllib  # type: ignore[import-not-found]
 
 
 @dataclass
@@ -107,7 +107,7 @@ class ProjectConfig:
 
 @dataclass
 class Config:
-    """Full featurebox configuration."""
+    """Full fwts configuration."""
 
     project: ProjectConfig = field(default_factory=ProjectConfig)
     linear: LinearConfig = field(default_factory=LinearConfig)
@@ -125,7 +125,7 @@ class Config:
 
 @dataclass
 class GlobalConfig:
-    """Global featurebox configuration with named projects."""
+    """Global fwts configuration with named projects."""
 
     projects: dict[str, Config] = field(default_factory=dict)
     default_project: str | None = None
@@ -226,9 +226,7 @@ def parse_config(data: dict[str, Any]) -> Config:
     project = ProjectConfig(
         name=project_data.get("name", ""),
         main_repo=_expand_path(project_data.get("main_repo", Path.cwd())),
-        worktree_base=_expand_path(
-            project_data.get("worktree_base", Path.cwd() / "worktrees")
-        ),
+        worktree_base=_expand_path(project_data.get("worktree_base", Path.cwd() / "worktrees")),
         base_branch=project_data.get("base_branch", "main"),
         github_repo=project_data.get("github_repo", ""),
     )
@@ -335,11 +333,11 @@ def load_config(
         worktree_path: Worktree path for local config (auto-detected if not provided)
 
     Config loading order (later overrides earlier):
-    1. Global config (~/.config/featurebox/config.toml)
-    2. Main repo config (<main_repo>/.featurebox.toml)
-    3. Worktree local config (<worktree>/.featurebox.local.toml)
+    1. Global config (~/.config/fwts/config.toml)
+    2. Main repo config (<main_repo>/.fwts.toml)
+    3. Worktree local config (<worktree>/.fwts.local.toml)
     """
-    global_config_path = Path.home() / ".config" / "featurebox" / "config.toml"
+    global_config_path = Path.home() / ".config" / "fwts" / "config.toml"
     sources: list[Path] = []
     merged_data: dict[str, Any] = {}
 
@@ -397,7 +395,7 @@ def load_config(
             main_repo = git_root
 
     if main_repo:
-        main_config_path = main_repo / ".featurebox.toml"
+        main_config_path = main_repo / ".fwts.toml"
         if main_config_path.exists():
             main_data = _load_toml_file(main_config_path)
             merged_data = _deep_merge(merged_data, main_data)
@@ -407,7 +405,7 @@ def load_config(
     worktree = worktree_path or cwd
     # Check if we're in a worktree (not the main repo)
     if _find_main_repo_from_worktree(worktree):
-        local_config_path = worktree / ".featurebox.local.toml"
+        local_config_path = worktree / ".fwts.local.toml"
         if local_config_path.exists():
             local_data = _load_toml_file(local_config_path)
             merged_data = _deep_merge(merged_data, local_data)
@@ -420,7 +418,7 @@ def load_config(
 
 def load_global_config() -> GlobalConfig:
     """Load the global configuration with all named projects."""
-    global_config_path = Path.home() / ".config" / "featurebox" / "config.toml"
+    global_config_path = Path.home() / ".config" / "fwts" / "config.toml"
     if not global_config_path.exists():
         return GlobalConfig()
 
@@ -443,7 +441,7 @@ def list_projects() -> list[str]:
 
 def generate_example_config() -> str:
     """Generate example configuration file content."""
-    return '''[project]
+    return """[project]
 name = "myproject"
 main_repo = "~/code/myproject"
 worktree_base = "~/code/myproject-worktrees"
@@ -494,13 +492,13 @@ compose_file = "docker-compose.yml"
 # name = "CI"
 # hook = "gh run list --branch $BRANCH_NAME --limit 1 --json conclusion -q '.[0].conclusion // \\"pending\\"'"
 # color_map = { success = "green", failure = "red", pending = "yellow" }
-'''
+"""
 
 
 def generate_global_config_example() -> str:
     """Generate example global configuration file content."""
-    return '''# Global featurebox configuration
-# Location: ~/.config/featurebox/config.toml
+    return """# Global fwts configuration
+# Location: ~/.config/fwts/config.toml
 
 # Default project when not in a project directory
 default_project = "myproject"
@@ -521,4 +519,4 @@ name = "another"
 main_repo = "~/code/another"
 worktree_base = "~/code/another-worktrees"
 base_branch = "dev"
-'''
+"""

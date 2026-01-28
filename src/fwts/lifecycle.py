@@ -1,4 +1,4 @@
-"""Lifecycle orchestration for featurebox."""
+"""Lifecycle orchestration for fwts."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 
 from rich.console import Console
 
-from featurebox.config import Config
-from featurebox.docker import compose_down, compose_up, has_docker_compose, project_name_from_branch
-from featurebox.git import (
+from fwts.config import Config
+from fwts.docker import compose_down, compose_up, has_docker_compose, project_name_from_branch
+from fwts.git import (
     Worktree,
     create_worktree,
     delete_branch,
@@ -22,7 +22,7 @@ from featurebox.git import (
     remote_branch_exists,
     remove_worktree,
 )
-from featurebox.tmux import (
+from fwts.tmux import (
     attach_session,
     create_session,
     kill_session,

@@ -1,4 +1,4 @@
-"""Main CLI entry point for featurebox."""
+"""Main CLI entry point for fwts."""
 
 from __future__ import annotations
 
@@ -10,30 +10,30 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from featurebox import __version__
-from featurebox.completions import generate_bash, generate_fish, generate_zsh, install_completion
-from featurebox.config import (
+from fwts import __version__
+from fwts.completions import generate_bash, generate_fish, generate_zsh, install_completion
+from fwts.config import (
     Config,
     generate_example_config,
     generate_global_config_example,
     list_projects,
     load_config,
 )
-from featurebox.focus import (
+from fwts.focus import (
     focus_worktree,
     get_focus_state,
     get_focused_branch,
     unfocus,
 )
-from featurebox.git import list_worktrees
-from featurebox.github import get_branch_from_pr, has_gh_cli
-from featurebox.lifecycle import full_cleanup, full_setup, get_worktree_for_input
-from featurebox.linear import get_branch_from_ticket
-from featurebox.tmux import attach_session, session_exists, session_name_from_branch
-from featurebox.tui import FeatureboxTUI, simple_list
+from fwts.git import list_worktrees
+from fwts.github import get_branch_from_pr, has_gh_cli
+from fwts.lifecycle import full_cleanup, full_setup, get_worktree_for_input
+from fwts.linear import get_branch_from_ticket
+from fwts.tmux import attach_session, session_exists, session_name_from_branch
+from fwts.tui import FeatureboxTUI, simple_list
 
 app = typer.Typer(
-    name="featurebox",
+    name="fwts",
     help="Git worktree workflow manager for feature development",
     no_args_is_help=True,
 )
@@ -42,7 +42,7 @@ console = Console()
 
 def version_callback(value: bool) -> None:
     if value:
-        console.print(f"featurebox {__version__}")
+        console.print(f"fwts {__version__}")
         raise typer.Exit()
 
 
@@ -74,7 +74,7 @@ def main(
         typer.Option("--version", "-V", callback=version_callback, is_eager=True),
     ] = None,
 ) -> None:
-    """featurebox - Git worktree workflow manager."""
+    """fwts - Git worktree workflow manager."""
     pass
 
 
@@ -90,9 +90,7 @@ def _resolve_input_to_branch(input_str: str, config: Config) -> str | None:
         return None
 
     # Check if it looks like a Linear ticket
-    is_linear = (
-        input_str.upper().startswith(("SUP-", "ENG-", "DEV-")) or "linear.app" in input_str
-    )
+    is_linear = input_str.upper().startswith(("SUP-", "ENG-", "DEV-")) or "linear.app" in input_str
     if is_linear and config.linear.enabled:
         try:
             return asyncio.run(get_branch_from_ticket(input_str, config.linear.api_key))
@@ -101,9 +99,7 @@ def _resolve_input_to_branch(input_str: str, config: Config) -> str | None:
             return None
 
     # Check if it looks like a GitHub PR
-    is_github_pr = (
-        input_str.startswith("#") or input_str.isdigit() or "github.com" in input_str
-    )
+    is_github_pr = input_str.startswith("#") or input_str.isdigit() or "github.com" in input_str
     if is_github_pr and has_gh_cli() and config.project.github_repo:
         branch = get_branch_from_pr(input_str, config.project.github_repo)
         if branch:
@@ -308,6 +304,7 @@ def focus(
         return
 
     # Find the worktree to focus
+    assert input is not None  # Guarded by condition on line 290
     worktree = get_worktree_for_input(input, config)
     if not worktree:
         console.print(f"[red]No worktree found matching: {input}[/red]")
@@ -322,8 +319,8 @@ def projects() -> None:
     project_names = list_projects()
 
     if not project_names:
-        console.print("[dim]No projects configured in ~/.config/featurebox/config.toml[/dim]")
-        console.print("[dim]Run 'featurebox init --global' to create global config[/dim]")
+        console.print("[dim]No projects configured in ~/.config/fwts/config.toml[/dim]")
+        console.print("[dim]Run 'fwts init --global' to create global config[/dim]")
         return
 
     table = Table(show_header=True, header_style="bold cyan")
@@ -353,13 +350,13 @@ def init(
         typer.Option("--global", "-g", help="Initialize global config instead"),
     ] = False,
 ) -> None:
-    """Initialize featurebox configuration.
+    """Initialize fwts configuration.
 
-    Without --global: Creates .featurebox.toml in current repo.
-    With --global: Creates ~/.config/featurebox/config.toml with named projects.
+    Without --global: Creates .fwts.toml in current repo.
+    With --global: Creates ~/.config/fwts/config.toml with named projects.
     """
     if global_config:
-        config_dir = Path.home() / ".config" / "featurebox"
+        config_dir = Path.home() / ".config" / "fwts"
         config_dir.mkdir(parents=True, exist_ok=True)
         config_file = config_dir / "config.toml"
 
@@ -373,7 +370,7 @@ def init(
         console.print("[dim]Edit the file to add your projects.[/dim]")
     else:
         target_dir = path or Path.cwd()
-        config_file = target_dir / ".featurebox.toml"
+        config_file = target_dir / ".fwts.toml"
 
         if config_file.exists():
             console.print(f"[yellow]Config file already exists: {config_file}[/yellow]")

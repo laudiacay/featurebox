@@ -1,1 +1,1 @@
-"""Tests for featurebox."""
+"""Tests for fwts."""

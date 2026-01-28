@@ -1,7 +1,6 @@
 """Tests for configuration loading."""
 
-
-from featurebox.config import (
+from fwts.config import (
     parse_config,
 )
 

@@ -51,7 +51,8 @@ coverage.xml
 *.spec
 
 # Local config
-.featurebox.toml
+.fwts.toml
+.fwts.local.toml
 
 # OS
 .DS_Store

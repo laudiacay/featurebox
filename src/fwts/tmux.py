@@ -1,11 +1,11 @@
-"""Tmux session management for featurebox."""
+"""Tmux session management for fwts."""
 
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 
-from featurebox.config import TmuxConfig
+from fwts.config import TmuxConfig
 
 
 class TmuxError(Exception):

@@ -1,4 +1,4 @@
-"""Column hook execution for featurebox TUI."""
+"""Column hook execution for fwts TUI."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from pathlib import Path
 
 import anyio
 
-from featurebox.config import ColumnHook
-from featurebox.git import Worktree
+from fwts.config import ColumnHook
+from fwts.git import Worktree
 
 
 @dataclass
@@ -44,8 +44,8 @@ async def run_hook(
 
     # Determine if hook is a script file or inline command
     hook_cmd = hook.hook
-    hooks_dir = worktree.path / ".featurebox" / "hooks"
-    global_hooks_dir = Path.home() / ".config" / "featurebox" / "hooks"
+    hooks_dir = worktree.path / ".fwts" / "hooks"
+    global_hooks_dir = Path.home() / ".config" / "fwts" / "hooks"
 
     # Check for script file
     if not hook_cmd.startswith("/") and " " not in hook_cmd.split()[0]:

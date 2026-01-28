@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "featurebox"
+name = "fwts"
 version = "0.1.0"
 description = "Git worktree workflow manager for feature development"
 readme = "README.md"
@@ -45,8 +45,8 @@ dev = [
 ]
 
 [project.scripts]
-featurebox = "featurebox.cli:app"
-fb = "featurebox.cli:app"
+fwts = "fwts.cli:app"
+fb = "fwts.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/laudiacay/featurebox"
@@ -54,7 +54,7 @@ Repository = "https://github.com/laudiacay/featurebox"
 Issues = "https://github.com/laudiacay/featurebox/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/featurebox"]
+packages = ["src/fwts"]
 
 [tool.ruff]
 line-length = 100
@@ -65,13 +65,13 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 # Shell completion scripts contain embedded shell code with long lines
-"src/featurebox/completions.py" = ["E501"]
+"src/fwts/completions.py" = ["E501"]
 # Hook commands are long shell one-liners
-"src/featurebox/hooks.py" = ["E501"]
+"src/fwts/hooks.py" = ["E501"]
 # Config example strings can be long
-"src/featurebox/config.py" = ["E501"]
+"src/fwts/config.py" = ["E501"]
 # TUI messages can be long
-"src/featurebox/tui.py" = ["E501"]
+"src/fwts/tui.py" = ["E501"]
 
 [tool.pyright]
 pythonVersion = "3.10"

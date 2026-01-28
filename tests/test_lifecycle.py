@@ -5,15 +5,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from featurebox.config import (
+from fwts.config import (
     Config,
     DockerConfig,
     LifecycleConfig,
     ProjectConfig,
     TmuxConfig,
 )
-from featurebox.git import Worktree
-from featurebox.lifecycle import (
+from fwts.git import Worktree
+from fwts.lifecycle import (
     create_symlinks,
     get_worktree_for_input,
     run_lifecycle_commands,
@@ -109,7 +109,7 @@ def test_create_symlinks_skips_missing(tmp_path):
 
 def test_run_lifecycle_commands_on_start(tmp_path, sample_config):
     """Test running on_start lifecycle commands."""
-    with patch("featurebox.lifecycle.subprocess.run") as mock_run:
+    with patch("fwts.lifecycle.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
 
         run_lifecycle_commands("on_start", tmp_path, sample_config)
@@ -123,7 +123,7 @@ def test_run_lifecycle_commands_on_start(tmp_path, sample_config):
 
 def test_run_lifecycle_commands_on_cleanup(tmp_path, sample_config):
     """Test running on_cleanup lifecycle commands."""
-    with patch("featurebox.lifecycle.subprocess.run") as mock_run:
+    with patch("fwts.lifecycle.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
 
         run_lifecycle_commands("on_cleanup", tmp_path, sample_config)
@@ -135,7 +135,7 @@ def test_run_lifecycle_commands_on_cleanup(tmp_path, sample_config):
 
 def test_get_worktree_for_input_exact_match(sample_config, sample_worktrees):
     """Test finding worktree by exact branch name."""
-    with patch("featurebox.lifecycle.list_worktrees") as mock_list:
+    with patch("fwts.lifecycle.list_worktrees") as mock_list:
         mock_list.return_value = sample_worktrees
 
         result = get_worktree_for_input("feature-a", sample_config)
@@ -146,7 +146,7 @@ def test_get_worktree_for_input_exact_match(sample_config, sample_worktrees):
 
 def test_get_worktree_for_input_partial_match(sample_config, sample_worktrees):
     """Test finding worktree by partial branch name."""
-    with patch("featurebox.lifecycle.list_worktrees") as mock_list:
+    with patch("fwts.lifecycle.list_worktrees") as mock_list:
         mock_list.return_value = sample_worktrees
 
         result = get_worktree_for_input("feature-b", sample_config)
@@ -167,7 +167,7 @@ def test_get_worktree_for_input_path_match(sample_config, tmp_path):
         ),
     ]
 
-    with patch("featurebox.lifecycle.list_worktrees") as mock_list:
+    with patch("fwts.lifecycle.list_worktrees") as mock_list:
         mock_list.return_value = worktrees
 
         result = get_worktree_for_input(str(worktree_path), sample_config)
@@ -178,7 +178,7 @@ def test_get_worktree_for_input_path_match(sample_config, tmp_path):
 
 def test_get_worktree_for_input_excludes_main(sample_config, sample_worktrees):
     """Test that main branch worktree is excluded from matching."""
-    with patch("featurebox.lifecycle.list_worktrees") as mock_list:
+    with patch("fwts.lifecycle.list_worktrees") as mock_list:
         mock_list.return_value = sample_worktrees
 
         result = get_worktree_for_input("main", sample_config)
@@ -189,7 +189,7 @@ def test_get_worktree_for_input_excludes_main(sample_config, sample_worktrees):
 
 def test_get_worktree_for_input_no_match(sample_config, sample_worktrees):
     """Test returning None when no worktree matches."""
-    with patch("featurebox.lifecycle.list_worktrees") as mock_list:
+    with patch("fwts.lifecycle.list_worktrees") as mock_list:
         mock_list.return_value = sample_worktrees
 
         result = get_worktree_for_input("nonexistent", sample_config)

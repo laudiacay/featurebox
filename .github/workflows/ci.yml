@@ -62,7 +62,7 @@ jobs:
         run: uv sync --dev
 
       - name: Run tests
-        run: uv run pytest tests -v --cov=src/featurebox --cov-report=xml
+        run: uv run pytest tests -v --cov=src/fwts --cov-report=xml
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

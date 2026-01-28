@@ -1,4 +1,4 @@
-"""Interactive TUI for featurebox status dashboard."""
+"""Interactive TUI for fwts status dashboard."""
 
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from featurebox.config import Config
-from featurebox.focus import get_focused_branch, has_focus
-from featurebox.git import Worktree, list_worktrees
-from featurebox.hooks import HookResult, get_builtin_hooks, run_all_hooks
-from featurebox.tmux import session_exists, session_name_from_branch
+from fwts.config import Config
+from fwts.focus import get_focused_branch, has_focus
+from fwts.git import Worktree, list_worktrees
+from fwts.hooks import HookResult, get_builtin_hooks, run_all_hooks
+from fwts.tmux import session_exists, session_name_from_branch
 
 console = Console()
 
@@ -89,7 +89,7 @@ class FeatureboxTUI:
     def _render_table(self) -> Table:
         """Render the worktree table."""
         # Get project name and focus info for title
-        project_name = self.config.project.name or "featurebox"
+        project_name = self.config.project.name or "fwts"
         focused_branch = get_focused_branch(self.config)
         focus_info = f" [green]◉ {focused_branch}[/green]" if focused_branch else ""
 
@@ -227,9 +227,11 @@ class FeatureboxTUI:
             return None, []
 
         try:
-            import readchar
+            import readchar  # type: ignore[import-not-found]
         except ImportError:
-            console.print("[yellow]Install 'readchar' for interactive mode: pip install readchar[/yellow]")
+            console.print(
+                "[yellow]Install 'readchar' for interactive mode: pip install readchar[/yellow]"
+            )
             console.print("[dim]Falling back to list mode...[/dim]")
             return None, []
 
@@ -244,7 +246,10 @@ class FeatureboxTUI:
                 # Render
                 table = self._render_table()
                 help_panel = self._render_help()
-                live.update(Panel.fit(table, subtitle=help_panel.renderable), refresh=True)
+                live.update(
+                    Panel.fit(table, subtitle=help_panel.renderable),  # type: ignore[arg-type]
+                    refresh=True,
+                )
 
                 # Handle input
                 try:

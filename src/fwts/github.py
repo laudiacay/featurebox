@@ -1,4 +1,4 @@
-"""GitHub CLI wrapper for featurebox."""
+"""GitHub CLI wrapper for fwts."""
 
 from __future__ import annotations
 
@@ -76,9 +76,7 @@ def _parse_pr_input(input_str: str, repo: str | None = None) -> tuple[str | None
     Returns (repo, identifier) where identifier is PR number or branch name.
     """
     # Check if it's a URL
-    url_match = re.match(
-        r"https://github\.com/([^/]+/[^/]+)/pull/(\d+)", input_str
-    )
+    url_match = re.match(r"https://github\.com/([^/]+/[^/]+)/pull/(\d+)", input_str)
     if url_match:
         return url_match.group(1), url_match.group(2)
 
@@ -105,9 +103,7 @@ def get_pr_by_branch(branch: str, repo: str | None = None) -> PRInfo | None:
         PRInfo or None if no PR exists
     """
     args = ["pr", "view", branch, "--json"]
-    args.append(
-        "number,title,headRefName,baseRefName,state,url,reviewDecision,mergeable,isDraft"
-    )
+    args.append("number,title,headRefName,baseRefName,state,url,reviewDecision,mergeable,isDraft")
 
     if repo:
         args.extend(["--repo", repo])
@@ -159,9 +155,7 @@ def get_pr(pr_ref: str, repo: str | None = None) -> PRInfo | None:
     parsed_repo, identifier = _parse_pr_input(pr_ref, repo)
 
     args = ["pr", "view", identifier, "--json"]
-    args.append(
-        "number,title,headRefName,baseRefName,state,url,reviewDecision,mergeable,isDraft"
-    )
+    args.append("number,title,headRefName,baseRefName,state,url,reviewDecision,mergeable,isDraft")
 
     if parsed_repo:
         args.extend(["--repo", parsed_repo])
@@ -256,9 +250,7 @@ def list_prs(repo: str | None = None, state: str = "open") -> list[PRInfo]:
         List of PRInfo
     """
     args = ["pr", "list", "--state", state, "--json"]
-    args.append(
-        "number,title,headRefName,baseRefName,state,url,reviewDecision,mergeable,isDraft"
-    )
+    args.append("number,title,headRefName,baseRefName,state,url,reviewDecision,mergeable,isDraft")
 
     if repo:
         args.extend(["--repo", repo])
@@ -293,9 +285,7 @@ def list_prs(repo: str | None = None, state: str = "open") -> list[PRInfo]:
             state=data["state"].lower(),
             url=data["url"],
             review_decision=review_map.get(data.get("reviewDecision")),
-            mergeable=mergeable_map.get(
-                data.get("mergeable", "UNKNOWN"), MergeableState.UNKNOWN
-            ),
+            mergeable=mergeable_map.get(data.get("mergeable", "UNKNOWN"), MergeableState.UNKNOWN),
             is_draft=data.get("isDraft", False),
         )
         for data in prs_data

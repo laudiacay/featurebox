@@ -1,11 +1,11 @@
-"""Docker compose management for featurebox."""
+"""Docker compose management for fwts."""
 
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 
-from featurebox.config import DockerConfig
+from fwts.config import DockerConfig
 
 
 class DockerError(Exception):
@@ -169,4 +169,4 @@ def project_name_from_branch(branch: str) -> str:
     name = re.sub(r"[^a-z0-9-]", "-", name)
     name = re.sub(r"-+", "-", name)
     name = name.strip("-")
-    return name or "featurebox"
+    return name or "fwts"

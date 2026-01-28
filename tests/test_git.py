@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from featurebox.git import (
+from fwts.git import (
     branch_exists,
     branch_is_pushed,
     get_current_branch,
@@ -19,7 +19,7 @@ from featurebox.git import (
 @pytest.fixture
 def mock_subprocess():
     """Mock subprocess.run for git commands."""
-    with patch("featurebox.git.subprocess.run") as mock:
+    with patch("fwts.git.subprocess.run") as mock:
         yield mock
 
 
@@ -94,9 +94,7 @@ def test_branch_is_pushed_false_no_remote(mock_subprocess):
 
 def test_get_current_branch(mock_subprocess):
     """Test get_current_branch returns branch name."""
-    mock_subprocess.return_value = MagicMock(
-        returncode=0, stdout="feature-branch\n", stderr=""
-    )
+    mock_subprocess.return_value = MagicMock(returncode=0, stdout="feature-branch\n", stderr="")
 
     result = get_current_branch()
 
@@ -114,9 +112,7 @@ HEAD def456abc123
 branch refs/heads/feature-branch
 
 """
-    mock_subprocess.return_value = MagicMock(
-        returncode=0, stdout=porcelain_output, stderr=""
-    )
+    mock_subprocess.return_value = MagicMock(returncode=0, stdout=porcelain_output, stderr="")
 
     result = list_worktrees()
 
@@ -138,9 +134,7 @@ HEAD abc123
 branch refs/heads/feature
 
 """
-    mock_subprocess.return_value = MagicMock(
-        returncode=0, stdout=porcelain_output, stderr=""
-    )
+    mock_subprocess.return_value = MagicMock(returncode=0, stdout=porcelain_output, stderr="")
 
     result = list_worktrees()
 
@@ -156,9 +150,7 @@ HEAD abc123
 detached
 
 """
-    mock_subprocess.return_value = MagicMock(
-        returncode=0, stdout=porcelain_output, stderr=""
-    )
+    mock_subprocess.return_value = MagicMock(returncode=0, stdout=porcelain_output, stderr="")
 
     result = list_worktrees()
 
@@ -168,23 +160,21 @@ detached
 
 def test_has_graphite_true():
     """Test has_graphite returns True when gt is available."""
-    with patch("featurebox.git.subprocess.run") as mock:
+    with patch("fwts.git.subprocess.run") as mock:
         mock.return_value = MagicMock(returncode=0)
         assert has_graphite() is True
 
 
 def test_has_graphite_false():
     """Test has_graphite returns False when gt is not available."""
-    with patch("featurebox.git.subprocess.run") as mock:
+    with patch("fwts.git.subprocess.run") as mock:
         mock.side_effect = FileNotFoundError()
         assert has_graphite() is False
 
 
 def test_get_repo_root(mock_subprocess):
     """Test get_repo_root returns repository root."""
-    mock_subprocess.return_value = MagicMock(
-        returncode=0, stdout="/home/user/project\n", stderr=""
-    )
+    mock_subprocess.return_value = MagicMock(returncode=0, stdout="/home/user/project\n", stderr="")
 
     result = get_repo_root()
 

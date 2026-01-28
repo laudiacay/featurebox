@@ -1,4 +1,4 @@
-"""Linear API integration for featurebox."""
+"""Linear API integration for fwts."""
 
 from __future__ import annotations
 

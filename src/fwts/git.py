@@ -1,4 +1,4 @@
-"""Git operations for featurebox."""
+"""Git operations for fwts."""
 
 from __future__ import annotations
 
@@ -73,9 +73,7 @@ def branch_is_pushed(branch: str, remote: str = "origin", cwd: Path | None = Non
 
     # Check if local and remote are at same commit
     local_result = run_git(["rev-parse", f"refs/heads/{branch}"], cwd=cwd, check=False)
-    remote_result = run_git(
-        ["rev-parse", f"refs/remotes/{remote}/{branch}"], cwd=cwd, check=False
-    )
+    remote_result = run_git(["rev-parse", f"refs/remotes/{remote}/{branch}"], cwd=cwd, check=False)
 
     if local_result.returncode != 0 or remote_result.returncode != 0:
         return False
@@ -185,9 +183,7 @@ def push_branch(branch: str, remote: str = "origin", cwd: Path | None = None) ->
     run_git(["push", "-u", remote, branch], cwd=cwd)
 
 
-def delete_remote_branch(
-    branch: str, remote: str = "origin", cwd: Path | None = None
-) -> None:
+def delete_remote_branch(branch: str, remote: str = "origin", cwd: Path | None = None) -> None:
     """Delete a branch from remote."""
     run_git(["push", remote, "--delete", branch], cwd=cwd)
 

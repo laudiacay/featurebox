@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from featurebox.config import ColumnHook
-from featurebox.git import Worktree
-from featurebox.hooks import get_builtin_hooks, run_hook
+from fwts.config import ColumnHook
+from fwts.git import Worktree
+from fwts.hooks import get_builtin_hooks, run_hook
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def sample_hook():
 @pytest.mark.asyncio
 async def test_run_hook_success(sample_worktree, sample_hook):
     """Test running a hook that succeeds."""
-    with patch("featurebox.hooks.anyio.run_process") as mock_run:
+    with patch("fwts.hooks.anyio.run_process") as mock_run:
         mock_run.return_value = MagicMock(stdout=b"success\n")
 
         result = await run_hook(sample_hook, sample_worktree)
@@ -52,7 +52,7 @@ async def test_run_hook_with_color_map(sample_worktree):
         color_map={"approved": "green", "changes_requested": "red"},
     )
 
-    with patch("featurebox.hooks.anyio.run_process") as mock_run:
+    with patch("fwts.hooks.anyio.run_process") as mock_run:
         mock_run.return_value = MagicMock(stdout=b"APPROVED\n")
 
         result = await run_hook(hook, sample_worktree)
@@ -70,7 +70,7 @@ async def test_run_hook_partial_color_match(sample_worktree):
         color_map={"success": "green", "failure": "red"},
     )
 
-    with patch("featurebox.hooks.anyio.run_process") as mock_run:
+    with patch("fwts.hooks.anyio.run_process") as mock_run:
         mock_run.return_value = MagicMock(stdout=b"test success here\n")
 
         result = await run_hook(hook, sample_worktree)
@@ -88,7 +88,7 @@ async def test_run_hook_truncates_long_output(sample_worktree):
         color_map={},
     )
 
-    with patch("featurebox.hooks.anyio.run_process") as mock_run:
+    with patch("fwts.hooks.anyio.run_process") as mock_run:
         long_output = "x" * 100
         mock_run.return_value = MagicMock(stdout=long_output.encode())
 
@@ -100,7 +100,7 @@ async def test_run_hook_truncates_long_output(sample_worktree):
 @pytest.mark.asyncio
 async def test_run_hook_handles_error(sample_worktree, sample_hook):
     """Test hook handling when command fails."""
-    with patch("featurebox.hooks.anyio.run_process") as mock_run:
+    with patch("fwts.hooks.anyio.run_process") as mock_run:
         mock_run.side_effect = Exception("Command failed")
 
         result = await run_hook(sample_hook, sample_worktree)
@@ -111,7 +111,7 @@ async def test_run_hook_handles_error(sample_worktree, sample_hook):
 @pytest.mark.asyncio
 async def test_run_hook_sets_env_vars(sample_worktree, sample_hook):
     """Test that hook receives correct environment variables."""
-    with patch("featurebox.hooks.anyio.run_process") as mock_run:
+    with patch("fwts.hooks.anyio.run_process") as mock_run:
         mock_run.return_value = MagicMock(stdout=b"ok\n")
 
         await run_hook(sample_hook, sample_worktree)
