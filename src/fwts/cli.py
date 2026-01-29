@@ -46,7 +46,12 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-# Global options
+# Global state for project/config from callback
+_global_project: str | None = None
+_global_config_path: Path | None = None
+
+
+# Per-command options (can override global)
 ProjectOption = Annotated[
     str | None,
     typer.Option(
@@ -62,20 +67,38 @@ ConfigOption = Annotated[
 ]
 
 
-def _get_config(project: str | None, config_path: Path | None) -> Config:
+def _get_config(project: str | None = None, config_path: Path | None = None) -> Config:
     """Load config with project or path override."""
-    return load_config(path=config_path, project_name=project)
+    # Use command-level options if provided, else fall back to global
+    proj = project if project is not None else _global_project
+    path = config_path if config_path is not None else _global_config_path
+    return load_config(path=path, project_name=proj)
 
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: Annotated[
         bool | None,
         typer.Option("--version", "-V", callback=version_callback, is_eager=True),
     ] = None,
+    project: Annotated[
+        str | None,
+        typer.Option(
+            "--project",
+            "-p",
+            help="Named project from global config",
+        ),
+    ] = None,
+    config: Annotated[
+        Path | None,
+        typer.Option("--config", "-c", help="Path to config file"),
+    ] = None,
 ) -> None:
     """fwts - Git worktree workflow manager."""
-    pass
+    global _global_project, _global_config_path
+    _global_project = project
+    _global_config_path = config
 
 
 def _resolve_input_to_branch(input_str: str, config: Config) -> str | None:

@@ -370,6 +370,7 @@ def load_config(
     cwd = Path.cwd()
 
     # 1. Start with global config
+    global_data: dict[str, Any] = {}
     if global_config_path.exists():
         global_data = _load_toml_file(global_config_path)
         # Check if cwd matches a known project
@@ -384,6 +385,13 @@ def load_config(
                 merged_data = _wrap_project_data(proj_data)
                 sources.append(global_config_path)
                 break
+
+        # If no project matched cwd, fall back to default_project
+        if not merged_data and global_data.get("default_project"):
+            default_proj = global_data["default_project"]
+            if default_proj in global_data.get("projects", {}):
+                merged_data = _wrap_project_data(global_data["projects"][default_proj])
+                sources.append(global_config_path)
 
     # 2. Find main repo config
     # First check if we're in a worktree
