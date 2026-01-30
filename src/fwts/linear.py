@@ -219,3 +219,241 @@ def extract_ticket_from_branch(branch: str) -> str | None:
     if match:
         return match.group(1).upper()
     return None
+
+
+@dataclass
+class TicketListItem:
+    """Ticket item for list display."""
+
+    id: str
+    identifier: str
+    title: str
+    state: str
+    state_type: str
+    priority: int
+    assignee: str | None
+    url: str
+    branch_name: str
+
+
+async def _run_query(query: str, variables: dict, api_key: str | None = None) -> dict:
+    """Run a GraphQL query against Linear API."""
+    if not api_key:
+        api_key = _get_api_key()
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            LINEAR_API_URL,
+            json={"query": query, "variables": variables},
+            headers={
+                "Authorization": api_key,
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+        )
+
+        if response.status_code != 200:
+            raise LinearError(f"Linear API error: {response.status_code}")
+
+        data = response.json()
+
+        if "errors" in data:
+            raise LinearError(f"Linear query error: {data['errors']}")
+
+        return data.get("data", {})
+
+
+def _parse_issues(issues: list[dict]) -> list[TicketListItem]:
+    """Parse issue nodes into TicketListItem objects."""
+    result = []
+    for issue in issues:
+        result.append(
+            TicketListItem(
+                id=issue["id"],
+                identifier=issue["identifier"],
+                title=issue["title"],
+                state=issue.get("state", {}).get("name", "Unknown"),
+                state_type=issue.get("state", {}).get("type", "backlog"),
+                priority=issue.get("priority", 0),
+                assignee=issue.get("assignee", {}).get("name") if issue.get("assignee") else None,
+                url=issue["url"],
+                branch_name=issue.get("branchName", ""),
+            )
+        )
+    return result
+
+
+async def get_me(api_key: str | None = None) -> dict:
+    """Get current user info."""
+    query = """
+    query Me {
+        viewer {
+            id
+            name
+            email
+        }
+    }
+    """
+    data = await _run_query(query, {}, api_key)
+    return data.get("viewer", {})
+
+
+async def list_my_tickets(
+    api_key: str | None = None,
+    include_completed: bool = False,
+) -> list[TicketListItem]:
+    """List tickets assigned to current user.
+
+    Args:
+        api_key: Linear API key
+        include_completed: Whether to include completed/canceled tickets
+
+    Returns:
+        List of tickets assigned to current user
+    """
+    # Build state filter
+    state_filter = {}
+    if not include_completed:
+        state_filter = {"type": {"nin": ["completed", "canceled"]}}
+
+    query = """
+    query MyIssues($filter: IssueFilter) {
+        viewer {
+            assignedIssues(filter: $filter, first: 50, orderBy: updatedAt) {
+                nodes {
+                    id
+                    identifier
+                    title
+                    url
+                    branchName
+                    priority
+                    state {
+                        name
+                        type
+                    }
+                    assignee {
+                        name
+                    }
+                }
+            }
+        }
+    }
+    """
+
+    variables = {"filter": {"state": state_filter}} if state_filter else {}
+    data = await _run_query(query, variables, api_key)
+    issues = data.get("viewer", {}).get("assignedIssues", {}).get("nodes", [])
+    return _parse_issues(issues)
+
+
+async def list_review_requests(api_key: str | None = None) -> list[TicketListItem]:
+    """List tickets where current user is requested for review.
+
+    This looks for issues in "In Review" state where the user is a subscriber
+    but not the assignee, or issues with review-related labels.
+    """
+    # Get issues in review state that I'm subscribed to
+    query = """
+    query ReviewRequests {
+        viewer {
+            id
+        }
+        issues(
+            filter: {
+                state: { type: { eq: "started" } }
+                or: [
+                    { labels: { name: { containsIgnoreCase: "review" } } }
+                    { state: { name: { containsIgnoreCase: "review" } } }
+                ]
+            }
+            first: 50
+            orderBy: updatedAt
+        ) {
+            nodes {
+                id
+                identifier
+                title
+                url
+                branchName
+                priority
+                state {
+                    name
+                    type
+                }
+                assignee {
+                    id
+                    name
+                }
+                subscribers {
+                    nodes {
+                        id
+                    }
+                }
+            }
+        }
+    }
+    """
+
+    data = await _run_query(query, {}, api_key)
+    viewer_id = data.get("viewer", {}).get("id")
+    issues = data.get("issues", {}).get("nodes", [])
+
+    # Filter to issues where user is subscriber but not assignee
+    review_issues = []
+    for issue in issues:
+        assignee_id = issue.get("assignee", {}).get("id") if issue.get("assignee") else None
+        subscriber_ids = [s.get("id") for s in issue.get("subscribers", {}).get("nodes", [])]
+
+        # Include if: in review state OR user is subscriber but not assignee
+        if assignee_id != viewer_id and (
+            "review" in issue.get("state", {}).get("name", "").lower()
+            or viewer_id in subscriber_ids
+        ):
+            review_issues.append(issue)
+
+    return _parse_issues(review_issues)
+
+
+async def list_team_tickets(
+    api_key: str | None = None,
+    include_completed: bool = False,
+) -> list[TicketListItem]:
+    """List all open tickets for the team.
+
+    Args:
+        api_key: Linear API key
+        include_completed: Whether to include completed/canceled tickets
+
+    Returns:
+        List of all team tickets
+    """
+    state_filter = {}
+    if not include_completed:
+        state_filter = {"type": {"nin": ["completed", "canceled"]}}
+
+    query = """
+    query TeamIssues($filter: IssueFilter) {
+        issues(filter: $filter, first: 100, orderBy: updatedAt) {
+            nodes {
+                id
+                identifier
+                title
+                url
+                branchName
+                priority
+                state {
+                    name
+                    type
+                }
+                assignee {
+                    name
+                }
+            }
+        }
+    }
+    """
+
+    variables = {"filter": {"state": state_filter}} if state_filter else {}
+    data = await _run_query(query, variables, api_key)
+    issues = data.get("issues", {}).get("nodes", [])
+    return _parse_issues(issues)

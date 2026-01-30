@@ -343,23 +343,15 @@ class FeatureboxTUI:
                 # Update display
                 live.update(self._render(), refresh=True)
 
-                # Check for auto-refresh
-                if time.time() - self.last_refresh > AUTO_REFRESH_INTERVAL:
-                    self.needs_refresh = True
-
-                # Handle input with timeout for auto-refresh
+                # Handle input - blocking read
                 try:
-                    # Use a short timeout to allow checking auto-refresh
-                    import select
+                    key = readchar.readkey()
+                    action = self._handle_key(key)
 
-                    if select.select([sys.stdin], [], [], 1.0)[0]:
-                        key = readchar.readkey()
-                        action = self._handle_key(key)
-
-                        if action:
-                            selected = self.get_selected_worktrees()
-                            self.running = False
-                            break
+                    if action:
+                        selected = self.get_selected_worktrees()
+                        self.running = False
+                        break
 
                     # Refresh data if needed
                     if self.needs_refresh:

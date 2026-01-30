@@ -28,7 +28,13 @@ from fwts.focus import (
 from fwts.git import list_worktrees
 from fwts.github import get_branch_from_pr, has_gh_cli
 from fwts.lifecycle import full_cleanup, full_setup, get_worktree_for_input
-from fwts.linear import get_branch_from_ticket
+from fwts.linear import (
+    get_branch_from_ticket,
+    list_my_tickets,
+    list_review_requests,
+    list_team_tickets,
+    TicketListItem,
+)
 from fwts.tmux import attach_session, session_exists, session_name_from_branch
 from fwts.tui import FeatureboxTUI, simple_list
 
@@ -439,6 +445,176 @@ def completions(
         raise typer.Exit(1)
 
     print(generators[shell]())
+
+
+@app.command()
+def tickets(
+    mode: Annotated[
+        str,
+        typer.Argument(help="Filter mode: mine, review, all"),
+    ] = "mine",
+    project: ProjectOption = None,
+    config_path: ConfigOption = None,
+) -> None:
+    """Browse Linear tickets and start worktrees.
+
+    Modes:
+    - mine: Tickets assigned to you (default)
+    - review: Tickets awaiting your review
+    - all: All open team tickets
+
+    Use j/k to navigate, Enter to start worktree, q to quit.
+    """
+    config = _get_config(project, config_path)
+
+    if not config.linear.enabled:
+        console.print("[red]Linear integration not enabled in config[/red]")
+        raise typer.Exit(1)
+
+    # Fetch tickets based on mode
+    console.print(f"[dim]Fetching {mode} tickets from Linear...[/dim]")
+
+    try:
+        if mode == "mine":
+            tickets_list = asyncio.run(list_my_tickets(config.linear.api_key))
+        elif mode == "review":
+            tickets_list = asyncio.run(list_review_requests(config.linear.api_key))
+        elif mode == "all":
+            tickets_list = asyncio.run(list_team_tickets(config.linear.api_key))
+        else:
+            console.print(f"[red]Unknown mode: {mode}[/red]")
+            console.print("Valid modes: mine, review, all")
+            raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Failed to fetch tickets: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not tickets_list:
+        console.print(f"[dim]No tickets found for mode: {mode}[/dim]")
+        return
+
+    # Run ticket picker TUI
+    selected = _run_ticket_picker(tickets_list, mode)
+
+    if selected:
+        # Start worktree for selected ticket
+        console.print(f"[blue]Starting worktree for {selected.identifier}...[/blue]")
+        branch = selected.branch_name
+        if not branch:
+            # Generate branch name
+            import re
+            safe_title = re.sub(r"[^a-zA-Z0-9]+", "-", selected.title.lower()).strip("-")[:50]
+            branch = f"{selected.identifier.lower()}-{safe_title}"
+
+        full_setup(branch, config, ticket_info=selected.identifier)
+
+
+def _run_ticket_picker(tickets: list[TicketListItem], mode: str) -> TicketListItem | None:
+    """Run interactive ticket picker TUI."""
+    import sys
+
+    if not sys.stdin.isatty():
+        console.print("[yellow]TUI requires interactive terminal[/yellow]")
+        return None
+
+    try:
+        import readchar
+    except ImportError:
+        console.print("[yellow]Install 'readchar' for interactive mode[/yellow]")
+        return None
+
+    from rich.live import Live
+    from rich.panel import Panel
+    from rich.text import Text
+
+    cursor = 0
+    running = True
+
+    def render() -> Panel:
+        table = Table(
+            title=f"[bold]Linear Tickets[/bold] ({mode})",
+            show_header=True,
+            header_style="bold cyan",
+            border_style="dim",
+        )
+
+        table.add_column("", width=2)
+        table.add_column("ID", style="cyan", width=10)
+        table.add_column("Title", style="bold")
+        table.add_column("State", width=12)
+        table.add_column("Assignee", width=15)
+
+        for idx, ticket in enumerate(tickets):
+            prefix = ">" if idx == cursor else " "
+
+            # Color state based on type
+            state_style = {
+                "backlog": "dim",
+                "unstarted": "yellow",
+                "started": "blue",
+                "completed": "green",
+                "canceled": "red",
+            }.get(ticket.state_type, "dim")
+
+            state_text = Text(ticket.state)
+            state_text.stylize(state_style)
+
+            assignee = ticket.assignee or "[dim]-[/dim]"
+
+            # Truncate title
+            title = ticket.title
+            if len(title) > 50:
+                title = title[:47] + "..."
+
+            style = "reverse" if idx == cursor else None
+            table.add_row(prefix, ticket.identifier, title, state_text, assignee, style=style)
+
+        help_text = Text()
+        help_text.append("j/↓", style="bold")
+        help_text.append(" down  ")
+        help_text.append("k/↑", style="bold")
+        help_text.append(" up  ")
+        help_text.append("enter", style="bold")
+        help_text.append(" start worktree  ")
+        help_text.append("o", style="bold")
+        help_text.append(" open in browser  ")
+        help_text.append("q", style="bold")
+        help_text.append(" quit")
+
+        from rich.console import Group
+        return Panel(Group(table, Text(""), help_text), border_style="blue")
+
+    KEY_UP = "\x1b[A"
+    KEY_DOWN = "\x1b[B"
+
+    selected = None
+
+    with Live(render(), auto_refresh=False, console=console) as live:
+        while running:
+            live.update(render(), refresh=True)
+
+            try:
+                key = readchar.readkey()
+
+                if key in ("q", "Q"):
+                    running = False
+                elif key in ("j", KEY_DOWN):
+                    cursor = min(cursor + 1, len(tickets) - 1)
+                elif key in ("k", KEY_UP):
+                    cursor = max(cursor - 1, 0)
+                elif key in ("\r", "\n"):
+                    selected = tickets[cursor]
+                    running = False
+                elif key in ("o", "O"):
+                    # Open in browser
+                    import subprocess
+                    ticket = tickets[cursor]
+                    subprocess.run(["open", ticket.url], check=False)
+
+            except KeyboardInterrupt:
+                running = False
+
+    return selected
 
 
 if __name__ == "__main__":
