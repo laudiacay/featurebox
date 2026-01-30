@@ -833,22 +833,31 @@ class FeatureboxTUI:
         live.update(self._render(), refresh=True)
 
     def _get_key_with_timeout(self, timeout: float = 0.5) -> str | None:
-        """Get keyboard input with timeout using select.
+        """Get keyboard input with timeout.
 
-        Note: This uses select on stdin file descriptor which works reliably
-        in terminal mode where readchar operates.
+        Uses signal-based timeout with readchar to avoid terminal mode conflicts.
         """
-        import select
+        import signal
+        import readchar  # type: ignore[import-not-found]
 
-        # Get the file descriptor for stdin
-        stdin_fd = sys.stdin.fileno()
+        def timeout_handler(signum, frame):
+            raise TimeoutError()
 
-        readable, _, _ = select.select([stdin_fd], [], [], timeout)
-        if readable:
-            import readchar  # type: ignore[import-not-found]
+        # Set up alarm signal
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.setitimer(signal.ITIMER_REAL, timeout)
 
-            return readchar.readkey()
-        return None
+        try:
+            key = readchar.readkey()
+            signal.setitimer(signal.ITIMER_REAL, 0)  # Cancel alarm
+            return key
+        except TimeoutError:
+            return None
+        except Exception:
+            signal.setitimer(signal.ITIMER_REAL, 0)  # Cancel alarm
+            raise
+        finally:
+            signal.signal(signal.SIGALRM, old_handler)
 
     def _adjust_viewport_after_resize(self, items: list) -> None:
         """Adjust viewport and cursor after terminal resize."""
@@ -922,16 +931,17 @@ class FeatureboxTUI:
                         self._adjust_viewport_after_resize(items)
                         live.update(self._render(), refresh=True)
 
-                    # Non-blocking input with timeout
+                    # Check for auto-refresh before blocking
+                    if time.time() - self.last_refresh >= AUTO_REFRESH_INTERVAL:
+                        live.update(self._render(), refresh=True)
+                        asyncio.run(self._load_data())
+                        live.update(self._render(), refresh=True)
+
+                    # Handle input - blocking read
                     try:
-                        key = self._get_key_with_timeout(timeout=0.5)
-                        if key is None:
-                            # Timeout - check auto-refresh
-                            if time.time() - self.last_refresh >= AUTO_REFRESH_INTERVAL:
-                                live.update(self._render(), refresh=True)
-                                asyncio.run(self._load_data())
-                                live.update(self._render(), refresh=True)
-                            continue
+                        import readchar  # type: ignore[import-not-found]
+
+                        key = readchar.readkey()
 
                         action = self._handle_key(key)
 
