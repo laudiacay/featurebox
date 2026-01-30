@@ -262,11 +262,12 @@ class FeatureboxTUI:
         # PR column - wider to show status properly
         table.add_column("PR", width=20)
 
-        # Don't show loading state in table - handled by status message
-        # Just show empty state if no data yet
-
+        # Show loading state or empty state
         if not self.worktrees:
-            table.add_row("[dim]No feature worktrees found[/dim]")
+            if self.loading:
+                table.add_row("[yellow]⟳ Loading worktrees...[/yellow]")
+            else:
+                table.add_row("[dim]No feature worktrees found[/dim]")
             return table
 
         # Calculate viewport range
@@ -375,11 +376,12 @@ class FeatureboxTUI:
         table.add_column("Local", width=5)  # Local worktree indicator
         table.add_column("PR", width=16)  # PR status
 
-        # Don't show loading state in table - handled by status message
-        # Just show empty state if no data yet
-
+        # Show loading state or empty state
         if not self.tickets:
-            table.add_row("[dim]No tickets found[/dim]")
+            if self.loading:
+                table.add_row("[yellow]⟳ Loading tickets from Linear...[/yellow]")
+            else:
+                table.add_row("[dim]No tickets found[/dim]")
             return table
 
         # Calculate viewport range
