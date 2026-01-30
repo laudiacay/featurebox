@@ -111,6 +111,7 @@ def full_setup(
     branch: str,
     config: Config,
     base_branch: str | None = None,
+    ticket_info: str = "",
 ) -> Path:
     """Complete setup for a new or existing feature branch.
 
@@ -120,6 +121,7 @@ def full_setup(
         branch: Branch name
         config: Configuration
         base_branch: Optional base branch (defaults to config.project.base_branch)
+        ticket_info: Optional ticket info to pass to Claude initialization
 
     Returns:
         Path to the worktree
@@ -175,7 +177,13 @@ def full_setup(
         console.print(f"[blue]Attaching to existing tmux session: {session_name}[/blue]")
     else:
         console.print(f"[blue]Creating tmux session: {session_name}[/blue]")
-        create_session(session_name, worktree_path, config.tmux)
+        create_session(
+            session_name,
+            worktree_path,
+            config.tmux,
+            claude_config=config.claude,
+            ticket_info=ticket_info,
+        )
 
         # Run on_start lifecycle commands
         if config.lifecycle.on_start:

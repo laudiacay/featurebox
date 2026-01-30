@@ -95,6 +95,19 @@ class TuiConfig:
 
 
 @dataclass
+class ClaudeConfig:
+    """Claude initialization configuration."""
+
+    enabled: bool = True
+    # Commands to run to gather context (output is piped to claude)
+    context_commands: list[str] = field(default_factory=list)
+    # Initial prompt/instructions to send to claude after context
+    init_instructions: str = ""
+    # Template for the full init message (use {context} and {ticket} placeholders)
+    init_template: str = ""
+
+
+@dataclass
 class ProjectConfig:
     """Project-level configuration."""
 
@@ -118,6 +131,7 @@ class Config:
     focus: FocusConfig = field(default_factory=FocusConfig)
     symlinks: list[str] = field(default_factory=list)
     tui: TuiConfig = field(default_factory=TuiConfig)
+    claude: ClaudeConfig = field(default_factory=ClaudeConfig)
 
     # Source tracking for debugging
     _config_sources: list[Path] = field(default_factory=list)
@@ -272,6 +286,14 @@ def parse_config(data: dict[str, Any]) -> Config:
     tui_data = data.get("tui", {})
     tui = TuiConfig(columns=_parse_column_hooks(tui_data.get("columns", [])))
 
+    claude_data = data.get("claude", {})
+    claude = ClaudeConfig(
+        enabled=claude_data.get("enabled", True),
+        context_commands=claude_data.get("context_commands", []),
+        init_instructions=claude_data.get("init_instructions", ""),
+        init_template=claude_data.get("init_template", ""),
+    )
+
     return Config(
         project=project,
         linear=linear,
@@ -282,6 +304,7 @@ def parse_config(data: dict[str, Any]) -> Config:
         focus=focus,
         symlinks=symlinks,
         tui=tui,
+        claude=claude,
     )
 
 
@@ -500,6 +523,25 @@ compose_file = "docker-compose.yml"
 # name = "CI"
 # hook = "gh run list --branch $BRANCH_NAME --limit 1 --json conclusion -q '.[0].conclusion // \\"pending\\"'"
 # color_map = { success = "green", failure = "red", pending = "yellow" }
+
+[claude]
+enabled = true
+# Commands to gather context before starting Claude
+context_commands = [
+    "cat CLAUDE.md 2>/dev/null || true",
+    "git log --oneline -5",
+]
+# Initial instructions for Claude
+init_instructions = "You are working on this feature. Review the context above and help me implement it."
+# Or use a template with placeholders:
+# init_template = \"\"\"
+# Ticket: {ticket}
+#
+# Context:
+# {context}
+#
+# Help me implement this feature.
+# \"\"\"
 """
 
 

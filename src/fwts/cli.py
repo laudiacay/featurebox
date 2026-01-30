@@ -165,12 +165,17 @@ def start(
                 else:
                     full_setup(info.worktree.branch, config, base)
         elif action == "cleanup" and selected:
-            for info in selected:
-                full_cleanup(info.worktree, config)
+            tui.run_with_cleanup_status(full_cleanup, selected)
         return
 
-    # Resolve input to branch name
+    # Resolve input to branch name and get ticket info if applicable
+    ticket_info = ""
     branch = _resolve_input_to_branch(input, config)
+
+    # If input looks like a Linear ticket, save it as ticket info
+    if input and (input.upper().startswith("SUP-") or "linear.app" in input.lower()):
+        ticket_info = input
+
     if not branch:
         console.print(f"[red]Could not resolve input to branch: {input}[/red]")
         raise typer.Exit(1)
@@ -186,9 +191,9 @@ def start(
             console.print(f"[blue]Attaching to existing session: {session_name}[/blue]")
             attach_session(session_name)
         else:
-            full_setup(branch, config, base)
+            full_setup(branch, config, base, ticket_info=ticket_info)
     else:
-        full_setup(branch, config, base)
+        full_setup(branch, config, base, ticket_info=ticket_info)
 
 
 @app.command()
@@ -263,8 +268,7 @@ def status(
             else:
                 full_setup(info.worktree.branch, config)
     elif action == "cleanup" and selected:
-        for info in selected:
-            full_cleanup(info.worktree, config)
+        tui.run_with_cleanup_status(full_cleanup, selected)
     elif action == "focus" and selected:
         # Focus the first selected worktree
         focus_worktree(selected[0].worktree, config, force=True)

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
@@ -16,10 +18,14 @@ from rich.text import Text
 from fwts.config import Config
 from fwts.focus import get_focused_branch, has_focus
 from fwts.git import Worktree, list_worktrees
+from fwts.github import get_pr_by_branch
 from fwts.hooks import HookResult, get_builtin_hooks, run_all_hooks
 from fwts.tmux import session_exists, session_name_from_branch
 
 console = Console()
+
+# Auto-refresh interval in seconds
+AUTO_REFRESH_INTERVAL = 30
 
 
 @dataclass
@@ -30,6 +36,7 @@ class WorktreeInfo:
     session_active: bool = False
     has_focus: bool = False
     hook_data: dict[str, HookResult] = field(default_factory=dict)
+    pr_url: str | None = None
 
 
 class FeatureboxTUI:
@@ -43,6 +50,10 @@ class FeatureboxTUI:
         self.running = True
         self.needs_refresh = True
         self.loading = False
+        self.status_message: str | None = None
+        self.status_style: str = "dim"
+        self.last_refresh: float = 0
+        self._refresh_lock = threading.Lock()
 
     def _get_feature_worktrees(self) -> list[Worktree]:
         """Get worktrees excluding main repo."""
@@ -58,20 +69,34 @@ class FeatureboxTUI:
 
     async def _load_data(self) -> None:
         """Load worktree data and run hooks."""
-        self.loading = True
+        with self._refresh_lock:
+            self.loading = True
+            self.status_message = "Refreshing..."
+            self.status_style = "yellow"
+
         worktrees = self._get_feature_worktrees()
+        github_repo = self.config.project.github_repo
 
         # Create WorktreeInfo objects
-        self.worktrees = []
+        new_worktrees = []
         for wt in worktrees:
             session_name = session_name_from_branch(wt.branch)
-            self.worktrees.append(
-                WorktreeInfo(
-                    worktree=wt,
-                    session_active=session_exists(session_name),
-                    has_focus=has_focus(wt, self.config),
-                )
+            info = WorktreeInfo(
+                worktree=wt,
+                session_active=session_exists(session_name),
+                has_focus=has_focus(wt, self.config),
             )
+
+            # Fetch PR URL
+            if github_repo:
+                try:
+                    pr = get_pr_by_branch(wt.branch, github_repo)
+                    if pr:
+                        info.pr_url = pr.url
+                except Exception:
+                    pass
+
+            new_worktrees.append(info)
 
         # Get hooks (configured + builtin)
         hooks = self.config.tui.columns if self.config.tui.columns else get_builtin_hooks()
@@ -79,12 +104,16 @@ class FeatureboxTUI:
         # Run hooks in parallel
         if hooks and worktrees:
             hook_results = await run_all_hooks(hooks, worktrees)
-            for info in self.worktrees:
+            for info in new_worktrees:
                 if info.worktree.path in hook_results:
                     info.hook_data = hook_results[info.worktree.path]
 
-        self.loading = False
-        self.needs_refresh = False
+        with self._refresh_lock:
+            self.worktrees = new_worktrees
+            self.loading = False
+            self.needs_refresh = False
+            self.last_refresh = time.time()
+            self.status_message = None
 
     def _render_table(self) -> Table:
         """Render the worktree table."""
@@ -110,9 +139,9 @@ class FeatureboxTUI:
         for hook in hooks:
             table.add_column(hook.name, width=12)
 
-        table.add_column("Path", style="dim")
+        table.add_column("PR", style="cyan")
 
-        if self.loading:
+        if self.loading and not self.worktrees:
             table.add_row("[dim]Loading...[/dim]")
             return table
 
@@ -126,8 +155,10 @@ class FeatureboxTUI:
             selected = "✓" if idx in self.selected else " "
             prefix = f"{cursor}{selected}"
 
-            # Branch name
+            # Branch name (truncate if too long)
             branch = info.worktree.branch
+            if len(branch) > 50:
+                branch = branch[:47] + "..."
 
             # Focus status
             focus = "[green]◉[/green]" if info.has_focus else "[dim]○[/dim]"
@@ -147,30 +178,83 @@ class FeatureboxTUI:
                 else:
                     hook_values.append(Text("-", style="dim"))
 
-            # Path (shortened)
-            path = str(info.worktree.path).replace(str(Path.home()), "~")
+            # PR URL or path
+            if info.pr_url:
+                # Show just the PR number as a clickable-looking link
+                pr_num = info.pr_url.split("/")[-1]
+                pr_display = f"#{pr_num}"
+            else:
+                pr_display = "[dim]no PR[/dim]"
 
-            # Highlight row if selected
+            # Highlight row if at cursor
             style = "reverse" if idx == self.cursor else None
 
-            table.add_row(prefix, branch, focus, session, *hook_values, path, style=style)
+            table.add_row(prefix, branch, focus, session, *hook_values, pr_display, style=style)
 
         return table
 
-    def _render_help(self) -> Panel:
-        """Render help panel."""
-        help_text = (
-            "[bold]j/↓[/bold] down  "
-            "[bold]k/↑[/bold] up  "
-            "[bold]space[/bold] select  "
-            "[bold]a[/bold] all  "
-            "[bold]enter[/bold] launch  "
-            "[bold]f[/bold] focus  "
-            "[bold]d[/bold] cleanup  "
-            "[bold]r[/bold] refresh  "
-            "[bold]q[/bold] quit"
+    def _render_help(self) -> Text:
+        """Render help text."""
+        help_text = Text()
+        help_text.append("j/↓", style="bold")
+        help_text.append(" down  ")
+        help_text.append("k/↑", style="bold")
+        help_text.append(" up  ")
+        help_text.append("space", style="bold")
+        help_text.append(" select  ")
+        help_text.append("a", style="bold")
+        help_text.append(" all  ")
+        help_text.append("enter", style="bold")
+        help_text.append(" launch  ")
+        help_text.append("f", style="bold")
+        help_text.append(" focus  ")
+        help_text.append("d", style="bold")
+        help_text.append(" cleanup  ")
+        help_text.append("r", style="bold")
+        help_text.append(" refresh  ")
+        help_text.append("q", style="bold")
+        help_text.append(" quit")
+        return help_text
+
+    def _render_status(self) -> Text:
+        """Render status line."""
+        status = Text()
+
+        if self.status_message:
+            status.append(self.status_message, style=self.status_style)
+        elif self.loading:
+            status.append("⟳ Refreshing...", style="yellow")
+        else:
+            # Show time since last refresh
+            elapsed = int(time.time() - self.last_refresh)
+            if elapsed < 60:
+                status.append(f"Updated {elapsed}s ago", style="dim")
+            else:
+                mins = elapsed // 60
+                status.append(f"Updated {mins}m ago", style="dim")
+
+            # Show auto-refresh info
+            next_refresh = AUTO_REFRESH_INTERVAL - (elapsed % AUTO_REFRESH_INTERVAL)
+            status.append(f" · auto-refresh in {next_refresh}s", style="dim")
+
+        return status
+
+    def _render(self) -> Panel:
+        """Render the full TUI."""
+        table = self._render_table()
+        help_text = self._render_help()
+        status_text = self._render_status()
+
+        # Combine help and status
+        footer = Text()
+        footer.append_text(help_text)
+        footer.append("\n")
+        footer.append_text(status_text)
+
+        return Panel(
+            Group(table, Text(""), footer),
+            border_style="blue",
         )
-        return Panel(help_text, border_style="dim")
 
     def _handle_key(self, key: str) -> str | None:
         """Handle keyboard input.
@@ -215,6 +299,15 @@ class FeatureboxTUI:
             return []
         return [self.worktrees[i] for i in sorted(self.selected)]
 
+    def set_status(self, message: str, style: str = "dim") -> None:
+        """Set status message."""
+        self.status_message = message
+        self.status_style = style
+
+    def clear_status(self) -> None:
+        """Clear status message."""
+        self.status_message = None
+
     def run(self) -> tuple[str | None, list[WorktreeInfo]]:
         """Run the TUI.
 
@@ -241,34 +334,78 @@ class FeatureboxTUI:
         action = None
         selected = []
 
-        with Live(auto_refresh=False) as live:
+        with Live(self._render(), auto_refresh=False, console=console) as live:
             while self.running:
-                # Render
-                table = self._render_table()
-                help_panel = self._render_help()
-                live.update(
-                    Panel.fit(table, subtitle=help_panel.renderable),  # type: ignore[arg-type]
-                    refresh=True,
-                )
+                # Update display
+                live.update(self._render(), refresh=True)
 
-                # Handle input
+                # Check for auto-refresh
+                if time.time() - self.last_refresh > AUTO_REFRESH_INTERVAL:
+                    self.needs_refresh = True
+
+                # Handle input with timeout for auto-refresh
                 try:
-                    key = readchar.readkey()
-                    action = self._handle_key(key)
+                    # Use a short timeout to allow checking auto-refresh
+                    import select
 
-                    if action:
-                        selected = self.get_selected_worktrees()
-                        self.running = False
-                        break
+                    if select.select([sys.stdin], [], [], 1.0)[0]:
+                        key = readchar.readkey()
+                        action = self._handle_key(key)
 
+                        if action:
+                            selected = self.get_selected_worktrees()
+                            self.running = False
+                            break
+
+                    # Refresh data if needed
                     if self.needs_refresh:
+                        live.update(self._render(), refresh=True)
                         asyncio.run(self._load_data())
+                        live.update(self._render(), refresh=True)
 
                 except KeyboardInterrupt:
                     self.running = False
                     break
 
         return action, selected
+
+    def run_with_cleanup_status(
+        self, cleanup_func: callable, worktrees: list[WorktreeInfo]
+    ) -> None:
+        """Run cleanup with status updates in the TUI.
+
+        Args:
+            cleanup_func: Function to call for cleanup (takes worktree and config)
+            worktrees: Worktrees to clean up
+        """
+        if not sys.stdin.isatty():
+            # Fall back to simple execution
+            for info in worktrees:
+                cleanup_func(info.worktree, self.config)
+            return
+
+        with Live(self._render(), auto_refresh=False, console=console) as live:
+            for i, info in enumerate(worktrees):
+                branch = info.worktree.branch
+                self.set_status(
+                    f"Cleaning up [{i + 1}/{len(worktrees)}]: {branch}...",
+                    style="yellow",
+                )
+                live.update(self._render(), refresh=True)
+
+                try:
+                    cleanup_func(info.worktree, self.config)
+                    self.set_status(f"✓ Cleaned up: {branch}", style="green")
+                except Exception as e:
+                    self.set_status(f"✗ Failed: {branch} - {e}", style="red")
+
+                live.update(self._render(), refresh=True)
+                time.sleep(0.5)  # Brief pause to show status
+
+            # Final status
+            self.set_status(f"Cleanup complete ({len(worktrees)} worktrees)", style="green")
+            live.update(self._render(), refresh=True)
+            time.sleep(1)
 
 
 def simple_list(config: Config) -> None:
@@ -287,18 +424,30 @@ def simple_list(config: Config) -> None:
 
     # Get focus info
     focused_branch = get_focused_branch(config)
+    github_repo = config.project.github_repo
 
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("Branch")
     table.add_column("Focus", width=5)
     table.add_column("Tmux", width=5)
-    table.add_column("Path")
+    table.add_column("PR")
 
     for wt in feature_worktrees:
         session_name = session_name_from_branch(wt.branch)
         focus = "[green]◉[/green]" if wt.branch == focused_branch else "[dim]○[/dim]"
         session = "[green]●[/green]" if session_exists(session_name) else "[dim]○[/dim]"
-        path = str(wt.path).replace(str(Path.home()), "~")
-        table.add_row(wt.branch, focus, session, path)
+
+        # Fetch PR URL
+        pr_display = "[dim]no PR[/dim]"
+        if github_repo:
+            try:
+                pr = get_pr_by_branch(wt.branch, github_repo)
+                if pr:
+                    pr_num = pr.url.split("/")[-1]
+                    pr_display = f"[cyan]#{pr_num}[/cyan]"
+            except Exception:
+                pass
+
+        table.add_row(wt.branch, focus, session, pr_display)
 
     console.print(table)

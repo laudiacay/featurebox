@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from pathlib import Path
 
-from fwts.config import TmuxConfig
+from fwts.config import ClaudeConfig, TmuxConfig
 
 
 class TmuxError(Exception):
@@ -32,13 +33,21 @@ def session_exists(name: str) -> bool:
     return result.returncode == 0
 
 
-def create_session(name: str, path: Path, config: TmuxConfig) -> None:
+def create_session(
+    name: str,
+    path: Path,
+    config: TmuxConfig,
+    claude_config: ClaudeConfig | None = None,
+    ticket_info: str = "",
+) -> None:
     """Create a new tmux session with editor and side command.
 
     Args:
         name: Session name
         path: Working directory for the session
         config: Tmux configuration
+        claude_config: Optional Claude configuration for initial context
+        ticket_info: Optional ticket info to pass to Claude
     """
     path = path.expanduser().resolve()
 
@@ -105,6 +114,11 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
     panes = result.stdout.strip().split("\n") if result.stdout.strip() else []
     second_pane = panes[1] if len(panes) > 1 else f"{first_window}.1"
 
+    # Determine side command - use claude with context if configured
+    side_cmd = config.side_command
+    if claude_config and config.side_command.strip().lower() == "claude":
+        side_cmd = build_claude_command(path, claude_config, ticket_info)
+
     # Run side command in second pane
     subprocess.run(
         [
@@ -112,7 +126,7 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
             "send-keys",
             "-t",
             f"{name}:{second_pane}",
-            config.side_command,
+            side_cmd,
             "Enter",
         ],
         check=True,
@@ -174,3 +188,102 @@ def session_name_from_branch(branch: str) -> str:
     Tmux session names can't contain '.' or ':'.
     """
     return branch.replace(".", "-").replace(":", "-").replace("/", "-")
+
+
+def gather_claude_context(
+    path: Path,
+    claude_config: ClaudeConfig,
+    ticket_info: str = "",
+) -> str:
+    """Gather context for Claude initialization.
+
+    Args:
+        path: Working directory for the worktree
+        claude_config: Claude configuration
+        ticket_info: Optional ticket information to include
+
+    Returns:
+        Gathered context as a string
+    """
+    context_parts = []
+
+    # Run context gathering commands
+    for cmd in claude_config.context_commands:
+        try:
+            result = subprocess.run(
+                ["bash", "-c", cmd],
+                capture_output=True,
+                text=True,
+                cwd=path,
+                timeout=30,
+            )
+            if result.stdout.strip():
+                context_parts.append(f"# Output of: {cmd}\n{result.stdout.strip()}")
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+            pass
+
+    context = "\n\n".join(context_parts)
+
+    # Use template if provided, otherwise build default message
+    if claude_config.init_template:
+        message = claude_config.init_template
+        message = message.replace("{context}", context)
+        message = message.replace("{ticket}", ticket_info)
+    else:
+        # Build default message
+        parts = []
+        if ticket_info:
+            parts.append(f"Working on: {ticket_info}")
+        if context:
+            parts.append(f"Context:\n{context}")
+        if claude_config.init_instructions:
+            parts.append(claude_config.init_instructions)
+        message = "\n\n".join(parts)
+
+    return message
+
+
+def build_claude_command(
+    path: Path,
+    claude_config: ClaudeConfig,
+    ticket_info: str = "",
+) -> str:
+    """Build the claude command with initial context.
+
+    Args:
+        path: Working directory for the worktree
+        claude_config: Claude configuration
+        ticket_info: Optional ticket information to include
+
+    Returns:
+        Command string to run claude with initial prompt
+    """
+    if not claude_config.enabled:
+        return "claude"
+
+    # Check if we have any context to gather
+    has_context = (
+        claude_config.context_commands
+        or claude_config.init_instructions
+        or claude_config.init_template
+    )
+
+    if not has_context:
+        return "claude"
+
+    # Gather context and build initial message
+    message = gather_claude_context(path, claude_config, ticket_info)
+
+    if not message.strip():
+        return "claude"
+
+    # Write to temp file and use claude with --prompt
+    # The temp file will persist long enough for the command to read it
+    # We use a file in the worktree to keep it associated
+    init_file = path / ".claude-init-prompt"
+    try:
+        init_file.write_text(message)
+        # Use claude with the initial prompt from file
+        return f'claude --prompt "$(cat {init_file})"'
+    except Exception:
+        return "claude"
