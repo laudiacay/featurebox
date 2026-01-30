@@ -261,13 +261,17 @@ class FeatureboxTUI:
 
         Returns action to perform: 'launch', 'cleanup', 'focus', or None
         """
+        # Arrow key escape sequences
+        KEY_UP = "\x1b[A"
+        KEY_DOWN = "\x1b[B"
+
         if key in ("q", "Q"):
             self.running = False
             return None
 
-        if key in ("j", "KEY_DOWN"):
+        if key in ("j", KEY_DOWN):
             self.cursor = min(self.cursor + 1, len(self.worktrees) - 1)
-        elif key in ("k", "KEY_UP"):
+        elif key in ("k", KEY_UP):
             self.cursor = max(self.cursor - 1, 0)
         elif key == " ":
             if self.cursor in self.selected:
@@ -279,7 +283,7 @@ class FeatureboxTUI:
                 self.selected.clear()
             else:
                 self.selected = set(range(len(self.worktrees)))
-        elif key in ("KEY_ENTER", "\r", "\n"):
+        elif key in ("\r", "\n"):
             return "launch"
         elif key in ("d", "D"):
             return "cleanup"
