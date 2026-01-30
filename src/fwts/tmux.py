@@ -59,13 +59,21 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
         check=True,
     )
 
+    # Get the first window index (handles base-index being 0 or 1)
+    result = subprocess.run(
+        ["tmux", "list-windows", "-t", name, "-F", "#{window_index}"],
+        capture_output=True,
+        text=True,
+    )
+    first_window = result.stdout.strip().split("\n")[0] if result.stdout.strip() else "0"
+
     # Run editor in first pane
     subprocess.run(
         [
             "tmux",
             "send-keys",
             "-t",
-            f"{name}:0.0",
+            f"{name}:{first_window}.0",
             config.editor,
             "Enter",
         ],
@@ -80,7 +88,7 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
             "split-window",
             split_flag,
             "-t",
-            f"{name}:0",
+            f"{name}:{first_window}",
             "-c",
             str(path),
         ],
@@ -93,7 +101,7 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
             "tmux",
             "send-keys",
             "-t",
-            f"{name}:0.1",
+            f"{name}:{first_window}.1",
             config.side_command,
             "Enter",
         ],
@@ -102,7 +110,7 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
 
     # Focus on the editor pane
     subprocess.run(
-        ["tmux", "select-pane", "-t", f"{name}:0.0"],
+        ["tmux", "select-pane", "-t", f"{name}:{first_window}.0"],
         check=True,
     )
 
