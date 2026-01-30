@@ -277,13 +277,13 @@ def build_claude_command(
     if not message.strip():
         return "claude"
 
-    # Write to temp file and use claude with --prompt
+    # Write to temp file and pass to claude as positional argument
     # The temp file will persist long enough for the command to read it
     # We use a file in the worktree to keep it associated
     init_file = path / ".claude-init-prompt"
     try:
         init_file.write_text(message)
-        # Use claude with the initial prompt from file
-        return f'claude --prompt "$(cat {init_file})"'
+        # Use claude with the initial prompt from file as positional argument
+        return f'claude "$(cat {init_file})"'
     except Exception:
         return "claude"
