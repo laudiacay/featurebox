@@ -131,7 +131,9 @@ def full_setup(
 
     main_repo = config.project.main_repo.expanduser().resolve()
     worktree_base = config.project.worktree_base.expanduser().resolve()
-    worktree_path = worktree_base / branch
+    # Sanitize branch name for filesystem - replace slashes with dashes
+    safe_branch_name = branch.replace("/", "-")
+    worktree_path = worktree_base / safe_branch_name
     session_name = session_name_from_branch(branch)
 
     # Check if worktree already exists

@@ -237,3 +237,52 @@ def get_branch_from_worktree_path(path: Path) -> str | None:
         if wt.path.resolve() == path:
             return wt.branch
     return None
+
+
+def has_uncommitted_changes(cwd: Path | None = None) -> bool:
+    """Check if worktree has uncommitted changes."""
+    # Check for staged changes
+    staged = run_git(["diff", "--cached", "--quiet"], cwd=cwd, check=False)
+    # Check for unstaged changes
+    unstaged = run_git(["diff", "--quiet"], cwd=cwd, check=False)
+    # Check for untracked files
+    untracked = run_git(["ls-files", "--others", "--exclude-standard"], cwd=cwd, check=False)
+
+    return (
+        staged.returncode != 0
+        or unstaged.returncode != 0
+        or bool(untracked.stdout.strip())
+    )
+
+
+def get_worktree_diff(cwd: Path | None = None, max_lines: int = 50) -> str:
+    """Get a summary of uncommitted changes in the worktree.
+
+    Args:
+        cwd: Worktree path
+        max_lines: Maximum number of diff lines to return
+
+    Returns:
+        Diff summary as string
+    """
+    parts = []
+
+    # Get status summary
+    status = run_git(["status", "--short"], cwd=cwd, check=False)
+    if status.stdout.strip():
+        parts.append("Changes:")
+        parts.append(status.stdout.strip())
+
+    # Get diff (staged + unstaged)
+    diff = run_git(["diff", "HEAD"], cwd=cwd, check=False)
+    if diff.stdout.strip():
+        lines = diff.stdout.strip().split("\n")
+        if len(lines) > max_lines:
+            parts.append(f"\nDiff (first {max_lines} lines):")
+            parts.append("\n".join(lines[:max_lines]))
+            parts.append(f"\n... ({len(lines) - max_lines} more lines)")
+        else:
+            parts.append("\nDiff:")
+            parts.append("\n".join(lines))
+
+    return "\n".join(parts) if parts else "No changes"

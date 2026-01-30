@@ -99,11 +99,14 @@ class FeatureboxTUI:
         self._refresh_lock = threading.Lock()
         self._pending_cleanup = False
         self._cleanup_func: Callable[[Any, Config], None] | None = None
+        self._last_terminal_size: tuple[int, int] = (0, 0)
+        self._resize_detected: bool = False
 
     @property
     def viewport_size(self) -> int:
-        """Number of items to show in viewport."""
-        return 15
+        """Calculate viewport size based on terminal height."""
+        # Reserve ~13 lines for UI chrome (title, header, help, borders)
+        return max(5, console.height - 13)
 
     def _get_feature_worktrees(self) -> list[Worktree]:
         """Get worktrees excluding main repo."""
@@ -707,19 +710,108 @@ class FeatureboxTUI:
             self.set_status("No worktrees selected", "yellow")
             return
 
+        # Import here to avoid circular dependency
+        from io import StringIO
+
+        from fwts.git import get_worktree_diff, has_uncommitted_changes
+
         for i, info in enumerate(worktrees):
             branch = info.worktree.branch
+            worktree_path = info.worktree.path
+
+            # First try without force
             self.set_status(
-                f"Cleaning up [{i + 1}/{len(worktrees)}]: {branch}...",
+                f"Checking [{i + 1}/{len(worktrees)}]: {branch}...",
                 style="yellow",
             )
             live.update(self._render(), refresh=True)
 
+            # Capture console output
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            captured_output = StringIO()
+
             try:
-                self._cleanup_func(info.worktree, self.config, force=True)
-                self.set_status(f"✓ Cleaned up: {branch}", style="green")
-            except Exception as e:
-                self.set_status(f"✗ Failed: {branch} - {e}", style="red")
+                # Redirect console output
+                sys.stdout = captured_output
+                sys.stderr = captured_output
+                console._file = captured_output
+
+                # Try cleanup without force first
+                try:
+                    self._cleanup_func(info.worktree, self.config, force=False)
+                    # Restore output
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    console._file = old_stdout
+                    self.set_status(f"✓ Cleaned up: {branch}", style="green")
+                    live.update(self._render(), refresh=True)
+                    time.sleep(0.3)
+                    continue
+                except Exception as e:
+                    # Restore output
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    console._file = old_stdout
+
+                    # Check if failure was due to uncommitted changes
+                    if has_uncommitted_changes(worktree_path):
+                        self.set_status(
+                            f"⚠ {branch} has uncommitted changes - press 'f' to force, any other key to skip",
+                            style="yellow",
+                        )
+
+                        # Get diff for display
+                        diff = get_worktree_diff(worktree_path, max_lines=20)
+
+                        # Show diff in status area
+                        prev_status = self.status_message
+                        self.status_message = f"Uncommitted changes in {branch}:\n{diff}\n\nPress 'f' to force cleanup, any other key to skip"
+                        live.update(self._render(), refresh=True)
+
+                        # Wait for user input
+                        key = self._get_key_with_timeout(timeout=30.0)
+
+                        # Restore previous status
+                        self.status_message = prev_status
+
+                        if key == "f":
+                            # User confirmed force cleanup
+                            self.set_status(
+                                f"Force cleaning [{i + 1}/{len(worktrees)}]: {branch}...",
+                                style="yellow",
+                            )
+                            live.update(self._render(), refresh=True)
+
+                            # Capture output again for force cleanup
+                            captured_output = StringIO()
+                            sys.stdout = captured_output
+                            sys.stderr = captured_output
+                            console._file = captured_output
+
+                            try:
+                                self._cleanup_func(info.worktree, self.config, force=True)
+                                sys.stdout = old_stdout
+                                sys.stderr = old_stderr
+                                console._file = old_stdout
+                                self.set_status(f"✓ Force cleaned: {branch}", style="green")
+                            except Exception as force_e:
+                                sys.stdout = old_stdout
+                                sys.stderr = old_stderr
+                                console._file = old_stdout
+                                self.set_status(f"✗ Failed: {branch} - {force_e}", style="red")
+                        else:
+                            # User skipped
+                            self.set_status(f"⊘ Skipped: {branch}", style="dim")
+                    else:
+                        # Other error, not uncommitted changes
+                        self.set_status(f"✗ Failed: {branch} - {e}", style="red")
+
+            finally:
+                # Ensure output is always restored
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+                console._file = old_stdout
 
             live.update(self._render(), refresh=True)
             time.sleep(0.3)
@@ -739,6 +831,35 @@ class FeatureboxTUI:
 
         self.clear_status()
         live.update(self._render(), refresh=True)
+
+    def _get_key_with_timeout(self, timeout: float = 0.5) -> str | None:
+        """Get keyboard input with timeout using select."""
+        import select
+
+        readable, _, _ = select.select([sys.stdin], [], [], timeout)
+        if readable:
+            import readchar  # type: ignore[import-not-found]
+
+            return readchar.readkey()
+        return None
+
+    def _adjust_viewport_after_resize(self, items: list) -> None:
+        """Adjust viewport and cursor after terminal resize."""
+        if not items:
+            return
+
+        # Clamp cursor to valid range
+        self.cursor = min(self.cursor, len(items) - 1)
+
+        # Clamp viewport_start to valid range
+        max_start = max(0, len(items) - self.viewport_size)
+        self.viewport_start = min(self.viewport_start, max_start)
+
+        # Ensure cursor is visible in viewport
+        if self.cursor < self.viewport_start:
+            self.viewport_start = self.cursor
+        elif self.cursor >= self.viewport_start + self.viewport_size:
+            self.viewport_start = self.cursor - self.viewport_size + 1
 
     def run(self) -> tuple[str | None, list[WorktreeInfo] | TicketInfo | None]:
         """Run the TUI.
@@ -768,40 +889,74 @@ class FeatureboxTUI:
         action = None
         result_data = None
 
-        with Live(self._render(), auto_refresh=False, console=console) as live:
-            while self.running:
-                # Update display
-                live.update(self._render(), refresh=True)
+        # Install SIGWINCH handler for terminal resize detection
+        import signal
 
-                # Handle input - blocking read
-                try:
-                    key = readchar.readkey()
-                    action = self._handle_key(key)
+        def sigwinch_handler(signum, frame):
+            self._resize_detected = True
 
-                    if action:
-                        if action == "start_ticket":
-                            result_data = self.get_selected_ticket()
-                        else:
-                            result_data = self.get_selected_worktrees()
+        old_handler = None
+        if hasattr(signal, "SIGWINCH"):
+            old_handler = signal.signal(signal.SIGWINCH, sigwinch_handler)
+
+        try:
+            with Live(self._render(), auto_refresh=False, console=console) as live:
+                while self.running:
+                    # Get current items list based on mode
+                    items = (
+                        self.worktrees if self.mode == TUIMode.WORKTREES else self.tickets
+                    )
+
+                    # Check for terminal resize
+                    current_size = (console.width, console.height)
+                    if self._resize_detected or current_size != self._last_terminal_size:
+                        self._resize_detected = False
+                        self._last_terminal_size = current_size
+                        self._adjust_viewport_after_resize(items)
+                        live.update(self._render(), refresh=True)
+
+                    # Non-blocking input with timeout
+                    try:
+                        key = self._get_key_with_timeout(timeout=0.5)
+                        if key is None:
+                            # Timeout - check auto-refresh
+                            if time.time() - self.last_refresh >= AUTO_REFRESH_INTERVAL:
+                                live.update(self._render(), refresh=True)
+                                asyncio.run(self._load_data())
+                                live.update(self._render(), refresh=True)
+                            continue
+
+                        action = self._handle_key(key)
+
+                        if action:
+                            if action == "start_ticket":
+                                result_data = self.get_selected_ticket()
+                            else:
+                                result_data = self.get_selected_worktrees()
+                            self.running = False
+                            break
+
+                        # Handle inline cleanup
+                        if self._pending_cleanup:
+                            self._pending_cleanup = False
+                            self._run_inline_cleanup(live)
+                            live.update(self._render(), refresh=True)
+                            continue
+
+                        # Refresh data if needed
+                        if self.needs_refresh:
+                            live.update(self._render(), refresh=True)
+                            asyncio.run(self._load_data())
+                            live.update(self._render(), refresh=True)
+
+                    except KeyboardInterrupt:
                         self.running = False
                         break
 
-                    # Handle inline cleanup
-                    if self._pending_cleanup:
-                        self._pending_cleanup = False
-                        self._run_inline_cleanup(live)
-                        live.update(self._render(), refresh=True)
-                        continue
-
-                    # Refresh data if needed
-                    if self.needs_refresh:
-                        live.update(self._render(), refresh=True)
-                        asyncio.run(self._load_data())
-                        live.update(self._render(), refresh=True)
-
-                except KeyboardInterrupt:
-                    self.running = False
-                    break
+        finally:
+            # Restore original SIGWINCH handler
+            if hasattr(signal, "SIGWINCH") and old_handler is not None:
+                signal.signal(signal.SIGWINCH, old_handler)
 
         return action, result_data
 
