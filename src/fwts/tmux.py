@@ -59,13 +59,14 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
         check=True,
     )
 
-    # Get the first window index (handles base-index being 0 or 1)
+    # Get the first window and pane indices (handles base-index and pane-base-index)
     result = subprocess.run(
-        ["tmux", "list-windows", "-t", name, "-F", "#{window_index}"],
+        ["tmux", "list-panes", "-t", name, "-F", "#{window_index}.#{pane_index}"],
         capture_output=True,
         text=True,
     )
-    first_window = result.stdout.strip().split("\n")[0] if result.stdout.strip() else "0"
+    first_pane = result.stdout.strip().split("\n")[0] if result.stdout.strip() else "0.0"
+    first_window = first_pane.split(".")[0]
 
     # Run editor in first pane
     subprocess.run(
@@ -73,7 +74,7 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
             "tmux",
             "send-keys",
             "-t",
-            f"{name}:{first_window}.0",
+            f"{name}:{first_pane}",
             config.editor,
             "Enter",
         ],
@@ -95,13 +96,22 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
         check=True,
     )
 
+    # Get the second pane index after split
+    result = subprocess.run(
+        ["tmux", "list-panes", "-t", name, "-F", "#{window_index}.#{pane_index}"],
+        capture_output=True,
+        text=True,
+    )
+    panes = result.stdout.strip().split("\n") if result.stdout.strip() else []
+    second_pane = panes[1] if len(panes) > 1 else f"{first_window}.1"
+
     # Run side command in second pane
     subprocess.run(
         [
             "tmux",
             "send-keys",
             "-t",
-            f"{name}:{first_window}.1",
+            f"{name}:{second_pane}",
             config.side_command,
             "Enter",
         ],
@@ -110,7 +120,7 @@ def create_session(name: str, path: Path, config: TmuxConfig) -> None:
 
     # Focus on the editor pane
     subprocess.run(
-        ["tmux", "select-pane", "-t", f"{name}:{first_window}.0"],
+        ["tmux", "select-pane", "-t", f"{name}:{first_pane}"],
         check=True,
     )
 
