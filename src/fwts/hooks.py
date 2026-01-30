@@ -129,10 +129,32 @@ def get_builtin_hooks() -> list[ColumnHook]:
     return [
         ColumnHook(
             name="CI",
-            hook='gh run list --branch "$BRANCH_NAME" --limit 1 --json conclusion,status -q \'if .[0].status != "completed" then "pending" else (.[0].conclusion // "none") end\'',
+            # Check PR required checks status, fall back to workflow runs
+            # Output: "pass", "fail", "req-fail" (required failed), "pending", "none"
+            hook='''
+                pr_checks=$(gh pr checks "$BRANCH_NAME" --json name,state,required 2>/dev/null)
+                if [ -n "$pr_checks" ] && [ "$pr_checks" != "[]" ]; then
+                    req_fail=$(echo "$pr_checks" | jq -r '[.[] | select(.required==true and .state=="FAILURE")] | length')
+                    req_pend=$(echo "$pr_checks" | jq -r '[.[] | select(.required==true and .state=="PENDING")] | length')
+                    opt_fail=$(echo "$pr_checks" | jq -r '[.[] | select(.required==false and .state=="FAILURE")] | length')
+                    if [ "$req_fail" -gt 0 ]; then
+                        echo "req-fail"
+                    elif [ "$req_pend" -gt 0 ]; then
+                        echo "pending"
+                    elif [ "$opt_fail" -gt 0 ]; then
+                        echo "pass*"
+                    else
+                        echo "pass"
+                    fi
+                else
+                    gh run list --branch "$BRANCH_NAME" --limit 1 --json conclusion,status -q 'if .[0].status != "completed" then "pending" else (.[0].conclusion // "none") end' 2>/dev/null || echo "none"
+                fi
+            ''',
             color_map={
-                "success": "green",
-                "failure": "red",
+                "pass": "green",
+                "pass*": "green",  # passed required, some optional failed
+                "fail": "red",
+                "req-fail": "red",  # required checks failed
                 "pending": "yellow",
                 "none": "dim",
             },
