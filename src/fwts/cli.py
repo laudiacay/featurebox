@@ -155,6 +155,7 @@ def start(
     if not input:
         # Interactive mode - show TUI and let user pick
         tui = FeatureboxTUI(config)
+        tui.set_cleanup_func(full_cleanup)  # Enable inline cleanup
         action, selected = tui.run()
 
         if action == "launch" and selected and isinstance(selected, list):
@@ -164,8 +165,6 @@ def start(
                     attach_session(session_name)
                 else:
                     full_setup(info.worktree.branch, config, base)
-        elif action == "cleanup" and selected and isinstance(selected, list):
-            tui.run_with_cleanup_status(full_cleanup, selected)
         elif action == "start_ticket" and selected and isinstance(selected, TicketInfo):
             _start_ticket_worktree(selected, config)
         return
@@ -264,6 +263,7 @@ def status(
     config = _get_config(project, config_path)
 
     tui = FeatureboxTUI(config)
+    tui.set_cleanup_func(full_cleanup)  # Enable inline cleanup
     action, result = tui.run()
 
     if action == "launch" and result and isinstance(result, list):
@@ -274,8 +274,6 @@ def status(
                 attach_session(session_name)
             else:
                 full_setup(info.worktree.branch, config)
-    elif action == "cleanup" and result and isinstance(result, list):
-        tui.run_with_cleanup_status(full_cleanup, result)
     elif action == "focus" and result and isinstance(result, list):
         # Focus the first selected worktree
         focus_worktree(result[0].worktree, config, force=True)
@@ -505,6 +503,7 @@ def tickets(
         raise typer.Exit(1)
 
     tui = FeatureboxTUI(config, initial_mode=mode_map[mode])
+    tui.set_cleanup_func(full_cleanup)  # Enable inline cleanup
     action, result = tui.run()
 
     if action == "start_ticket" and result and isinstance(result, TicketInfo):
@@ -517,8 +516,6 @@ def tickets(
                 attach_session(session_name)
             else:
                 full_setup(info.worktree.branch, config)
-    elif action == "cleanup" and result and isinstance(result, list):
-        tui.run_with_cleanup_status(full_cleanup, result)
     elif action == "focus" and result and isinstance(result, list):
         focus_worktree(result[0].worktree, config, force=True)
 

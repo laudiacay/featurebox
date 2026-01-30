@@ -97,6 +97,8 @@ class FeatureboxTUI:
         self.status_style: str = "dim"
         self.last_refresh: float = 0
         self._refresh_lock = threading.Lock()
+        self._pending_cleanup = False
+        self._cleanup_func: Callable[[Any, Config], None] | None = None
 
     @property
     def viewport_size(self) -> int:
@@ -653,7 +655,9 @@ class FeatureboxTUI:
             elif key in ("\r", "\n"):
                 return "launch"
             elif key in ("d", "D"):
-                return "cleanup"
+                # Run cleanup inline instead of returning
+                self._pending_cleanup = True
+                return None
             elif key in ("f", "F"):
                 return "focus"
         else:
@@ -686,6 +690,49 @@ class FeatureboxTUI:
     def clear_status(self) -> None:
         """Clear status message."""
         self.status_message = None
+
+    def set_cleanup_func(self, func: Callable[[Any, Config], None]) -> None:
+        """Set the cleanup function to use for inline cleanup."""
+        self._cleanup_func = func
+
+    def _run_inline_cleanup(self, live: Live) -> None:
+        """Run cleanup inline within the TUI, then refresh."""
+        if not self._cleanup_func:
+            self.set_status("No cleanup function configured", "red")
+            return
+
+        worktrees = self.get_selected_worktrees()
+        if not worktrees:
+            self.set_status("No worktrees selected", "yellow")
+            return
+
+        for i, info in enumerate(worktrees):
+            branch = info.worktree.branch
+            self.set_status(
+                f"Cleaning up [{i + 1}/{len(worktrees)}]: {branch}...",
+                style="yellow",
+            )
+            live.update(self._render(), refresh=True)
+
+            try:
+                self._cleanup_func(info.worktree, self.config)
+                self.set_status(f"✓ Cleaned up: {branch}", style="green")
+            except Exception as e:
+                self.set_status(f"✗ Failed: {branch} - {e}", style="red")
+
+            live.update(self._render(), refresh=True)
+            time.sleep(0.3)
+
+        # Clear selection and refresh data
+        self.selected.clear()
+        self.cursor = 0
+        self.viewport_start = 0
+        self.set_status("Cleanup complete - refreshing...", style="green")
+        live.update(self._render(), refresh=True)
+
+        # Refresh to show updated worktree list
+        asyncio.run(self._load_data())
+        self.clear_status()
 
     def run(self) -> tuple[str | None, list[WorktreeInfo] | TicketInfo | None]:
         """Run the TUI.
@@ -732,6 +779,13 @@ class FeatureboxTUI:
                             result_data = self.get_selected_worktrees()
                         self.running = False
                         break
+
+                    # Handle inline cleanup
+                    if self._pending_cleanup:
+                        self._pending_cleanup = False
+                        self._run_inline_cleanup(live)
+                        live.update(self._render(), refresh=True)
+                        continue
 
                     # Refresh data if needed
                     if self.needs_refresh:
