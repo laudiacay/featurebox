@@ -833,10 +833,17 @@ class FeatureboxTUI:
         live.update(self._render(), refresh=True)
 
     def _get_key_with_timeout(self, timeout: float = 0.5) -> str | None:
-        """Get keyboard input with timeout using select."""
+        """Get keyboard input with timeout using select.
+
+        Note: This uses select on stdin file descriptor which works reliably
+        in terminal mode where readchar operates.
+        """
         import select
 
-        readable, _, _ = select.select([sys.stdin], [], [], timeout)
+        # Get the file descriptor for stdin
+        stdin_fd = sys.stdin.fileno()
+
+        readable, _, _ = select.select([stdin_fd], [], [], timeout)
         if readable:
             import readchar  # type: ignore[import-not-found]
 
@@ -947,6 +954,9 @@ class FeatureboxTUI:
                         if self.needs_refresh:
                             live.update(self._render(), refresh=True)
                             asyncio.run(self._load_data())
+                            live.update(self._render(), refresh=True)
+                        else:
+                            # Always update display after processing a key
                             live.update(self._render(), refresh=True)
 
                     except KeyboardInterrupt:
