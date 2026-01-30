@@ -1,3 +1,3 @@
 """Featurebox - Git worktree workflow manager for feature development."""
 
-__version__ = "0.1.17"
+__version__ = "0.1.19"
