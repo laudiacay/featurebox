@@ -725,14 +725,19 @@ class FeatureboxTUI:
 
         # Clear selection and refresh data
         self.selected.clear()
-        self.cursor = 0
-        self.viewport_start = 0
         self.set_status("Cleanup complete - refreshing...", style="green")
         live.update(self._render(), refresh=True)
 
         # Refresh to show updated worktree list
         asyncio.run(self._load_data())
+
+        # Reset cursor/viewport to safe positions after list may have shrunk
+        max_cursor = max(0, len(self.worktrees) - 1)
+        self.cursor = min(self.cursor, max_cursor)
+        self.viewport_start = 0
+
         self.clear_status()
+        live.update(self._render(), refresh=True)
 
     def run(self) -> tuple[str | None, list[WorktreeInfo] | TicketInfo | None]:
         """Run the TUI.
