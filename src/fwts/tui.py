@@ -405,8 +405,9 @@ class FeatureboxTUI:
 
         # Show loading state or empty state
         if not self.tickets:
-            if self.loading:
-                table.add_row("", "", "[yellow]⟳ Loading tickets from Linear...[/yellow]", "", "", "")
+            # Show loading if actively loading OR if we just switched modes and need refresh
+            if self.loading or self.needs_refresh:
+                table.add_row("", "", "[yellow]⟳ Loading tickets...[/yellow]", "", "", "")
             else:
                 table.add_row("", "", "[dim]No tickets found[/dim]", "", "", "")
             return table
