@@ -151,6 +151,42 @@ def get_builtin_hooks() -> list[ColumnHook]:
             },
         ),
         ColumnHook(
+            name="Merge",
+            # Check PR merge status
+            # Output: "ready", "conflict", "blocked", "draft", "no PR"
+            hook='''
+                pr_data=$(gh pr view "$BRANCH_NAME" --json mergeable,mergeStateStatus,isDraft 2>/dev/null)
+                if [ -z "$pr_data" ]; then
+                    echo "no PR"
+                    exit 0
+                fi
+                is_draft=$(echo "$pr_data" | jq -r '.isDraft')
+                if [ "$is_draft" = "true" ]; then
+                    echo "draft"
+                    exit 0
+                fi
+                mergeable=$(echo "$pr_data" | jq -r '.mergeable')
+                state=$(echo "$pr_data" | jq -r '.mergeStateStatus')
+                if [ "$mergeable" = "CONFLICTING" ]; then
+                    echo "conflict"
+                elif [ "$state" = "BLOCKED" ]; then
+                    echo "blocked"
+                elif [ "$mergeable" = "MERGEABLE" ]; then
+                    echo "ready"
+                else
+                    echo "unknown"
+                fi
+            ''',
+            color_map={
+                "ready": "green",
+                "conflict": "red",
+                "blocked": "yellow",
+                "draft": "dim",
+                "no PR": "dim",
+                "unknown": "dim",
+            },
+        ),
+        ColumnHook(
             name="CI",
             # Check PR required checks status, fall back to workflow runs
             # Output: "pass", "fail", "req-fail" (required failed), "pending", "none"
