@@ -152,10 +152,10 @@ def get_builtin_hooks() -> list[ColumnHook]:
         ),
         ColumnHook(
             name="Merge",
-            # Check PR merge status
-            # Output: "ready", "conflict", "blocked", "draft", "no PR"
+            # Check PR merge status with detailed blocking reasons
+            # Output: "ready", "conflict", "blocked: <reason>", "draft", "no PR"
             hook='''
-                pr_data=$(gh pr view "$BRANCH_NAME" --json mergeable,mergeStateStatus,isDraft 2>/dev/null)
+                pr_data=$(gh pr view "$BRANCH_NAME" --json mergeable,mergeStateStatus,isDraft,statusCheckRollup,reviewDecision 2>/dev/null)
                 if [ -z "$pr_data" ]; then
                     echo "no PR"
                     exit 0
@@ -167,10 +167,30 @@ def get_builtin_hooks() -> list[ColumnHook]:
                 fi
                 mergeable=$(echo "$pr_data" | jq -r '.mergeable')
                 state=$(echo "$pr_data" | jq -r '.mergeStateStatus')
+                review=$(echo "$pr_data" | jq -r '.reviewDecision')
                 if [ "$mergeable" = "CONFLICTING" ]; then
                     echo "conflict"
                 elif [ "$state" = "BLOCKED" ]; then
-                    echo "blocked"
+                    # Find why it's blocked
+                    reasons=""
+                    # Check for failing checks
+                    failing=$(echo "$pr_data" | jq -r '[.statusCheckRollup[]? | select(.conclusion == "FAILURE")] | length')
+                    pending=$(echo "$pr_data" | jq -r '[.statusCheckRollup[]? | select(.status == "IN_PROGRESS" or .status == "PENDING")] | length')
+                    if [ "$failing" -gt 0 ]; then
+                        reasons="CI"
+                    elif [ "$pending" -gt 0 ]; then
+                        reasons="CI pending"
+                    fi
+                    # Check for review requirements
+                    if [ "$review" = "REVIEW_REQUIRED" ]; then
+                        [ -n "$reasons" ] && reasons="$reasons+" || reasons=""
+                        reasons="${reasons}review"
+                    elif [ "$review" = "CHANGES_REQUESTED" ]; then
+                        [ -n "$reasons" ] && reasons="$reasons+" || reasons=""
+                        reasons="${reasons}changes"
+                    fi
+                    [ -z "$reasons" ] && reasons="rules"
+                    echo "blocked:$reasons"
                 elif [ "$mergeable" = "MERGEABLE" ]; then
                     echo "ready"
                 else

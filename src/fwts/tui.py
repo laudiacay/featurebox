@@ -266,7 +266,6 @@ class FeatureboxTUI:
 
         table.add_column("", width=3)  # Selection/cursor
         table.add_column("Branch", style="bold", width=40)
-        table.add_column("Focus", width=5)
         table.add_column("Tmux", width=5)
 
         # Add hook columns (builtin + custom, custom overrides builtin with same name)
@@ -280,7 +279,7 @@ class FeatureboxTUI:
         # Filter out any named "PR" since we add that explicitly
         hooks = [h for h in hooks if h.name.upper() != "PR"]
         for hook in hooks:
-            table.add_column(hook.name, width=10)
+            table.add_column(hook.name, width=12)
 
         # PR column - wider to show status properly
         table.add_column("PR", width=20)
@@ -289,7 +288,7 @@ class FeatureboxTUI:
         if not self.worktrees:
             # Calculate number of columns for proper rendering
             num_hook_cols = len(hooks)
-            empty_cols = [""] * (3 + num_hook_cols)  # cursor, focus, tmux, hooks
+            empty_cols = [""] * (2 + num_hook_cols)  # tmux, hooks, PR
             if self.loading:
                 table.add_row("", "[yellow]⟳ Loading worktrees...[/yellow]", *empty_cols)
             else:
@@ -312,9 +311,6 @@ class FeatureboxTUI:
             if len(branch) > 40:
                 branch = branch[:37] + "..."
 
-            # Focus status
-            focus = "[green]◉[/green]" if info.has_focus else "[dim]○[/dim]"
-
             # Session status
             session = "[green]●[/green]" if info.session_active else "[dim]○[/dim]"
 
@@ -336,7 +332,7 @@ class FeatureboxTUI:
             # Highlight row if at cursor
             style = "reverse" if idx == self.cursor else None
 
-            table.add_row(prefix, branch, focus, session, *hook_values, pr_display, style=style)
+            table.add_row(prefix, branch, session, *hook_values, pr_display, style=style)
 
         return table
 
@@ -1096,13 +1092,11 @@ def simple_list(config: Config) -> None:
 
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("Branch")
-    table.add_column("Focus", width=5)
     table.add_column("Tmux", width=5)
     table.add_column("PR", width=20)
 
     for wt in feature_worktrees:
         session_name = session_name_from_branch(wt.branch)
-        focus = "[green]◉[/green]" if wt.branch == focused_branch else "[dim]○[/dim]"
         session = "[green]●[/green]" if session_exists(session_name) else "[dim]○[/dim]"
 
         # Fetch PR info
@@ -1124,6 +1118,6 @@ def simple_list(config: Config) -> None:
             except Exception:
                 pass
 
-        table.add_row(wt.branch, focus, session, pr_display)
+        table.add_row(wt.branch, session, pr_display)
 
     console.print(table)
