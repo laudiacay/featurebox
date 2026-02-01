@@ -279,7 +279,9 @@ class FeatureboxTUI:
         # Filter out any named "PR" since we add that explicitly
         hooks = [h for h in hooks if h.name.upper() != "PR"]
         for hook in hooks:
-            table.add_column(hook.name, width=12)
+            # Wider for Merge column which shows "blocked:CI+review"
+            width = 16 if hook.name == "Merge" else 12
+            table.add_column(hook.name, width=width)
 
         # PR column - wider to show status properly
         table.add_column("PR", width=20)
