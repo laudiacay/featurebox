@@ -589,6 +589,7 @@
                 <div class="nav-section-title">Features</div>
                 <a href="#core-features" class="nav-link">Core Features</a>
                 <a href="#integrations" class="nav-link">Integrations</a>
+                <a href="#claude-setup" class="nav-link">Claude Code Setup</a>
                 <a href="#tui" class="nav-link">Interactive TUI</a>
             </div>
             <div class="nav-section">
@@ -766,6 +767,78 @@
                     </div>
                 </div>
             </div>
+        </section>
+
+        <!-- Claude Code Setup -->
+        <section id="claude-setup" class="section">
+            <h2 class="section-title">Claude Code Setup</h2>
+            <p class="section-subtitle">Give Claude context about your current worktree with a statusline.</p>
+
+            <h3 style="margin-bottom: 12px;">The Statusline</h3>
+            <p style="color: var(--text-muted); margin-bottom: 20px;">
+                The <code>fwts statusline</code> command outputs a compact summary of your git state that Claude can see in every prompt:
+            </p>
+
+            <div class="terminal" style="margin-top: 0; margin-bottom: 32px;">
+                <div class="terminal-header">
+                    <div class="terminal-dot red"></div>
+                    <div class="terminal-dot yellow"></div>
+                    <div class="terminal-dot green"></div>
+                </div>
+                <div class="terminal-body">
+                    <div class="terminal-line"><span class="terminal-comment"># Compact mode (default)</span></div>
+                    <div class="terminal-line"><span class="terminal-prompt">$</span> fwts statusline</div>
+                    <div class="terminal-line terminal-output">[featurebox] main +1~3?1 ↑2 +82/-937</div>
+                    <div class="terminal-line"></div>
+                    <div class="terminal-line"><span class="terminal-comment"># Human-readable mode</span></div>
+                    <div class="terminal-line"><span class="terminal-prompt">$</span> fwts statusline --obvious</div>
+                    <div class="terminal-line terminal-output">[featurebox] main (1 staged, 3 modified) (2 to push)</div>
+                    <div class="terminal-line"></div>
+                    <div class="terminal-line"><span class="terminal-comment"># Check a different directory</span></div>
+                    <div class="terminal-line"><span class="terminal-prompt">$</span> fwts statusline --dir ~/code/other-project</div>
+                </div>
+            </div>
+
+            <h3 style="margin-bottom: 12px;">Configure Claude Code</h3>
+            <p style="color: var(--text-muted); margin-bottom: 20px;">
+                Add the statusline to Claude's settings so it appears in every conversation:
+            </p>
+
+            <div class="install-option" style="margin-bottom: 24px;">
+                <h3>~/.claude/settings.json</h3>
+                <pre>{
+  "env": {
+    "CLAUDE_STATUSLINE": "$(fwts statusline)"
+  }
+}</pre>
+            </div>
+
+            <p style="color: var(--text-muted); margin-bottom: 20px;">
+                Or use <code>--obvious</code> for more verbose output:
+            </p>
+
+            <div class="install-option" style="margin-bottom: 24px;">
+                <h3>~/.claude/settings.json (verbose)</h3>
+                <pre>{
+  "env": {
+    "CLAUDE_STATUSLINE": "$(fwts statusline --obvious)"
+  }
+}</pre>
+            </div>
+
+            <h3 style="margin-bottom: 12px;">What Claude Sees</h3>
+            <p style="color: var(--text-muted); margin-bottom: 16px;">
+                With this configured, Claude knows at a glance:
+            </p>
+            <ul style="color: var(--text-muted); margin-left: 20px; line-height: 1.8;">
+                <li><strong>Project name</strong> — which fwts project you're in</li>
+                <li><strong>Branch</strong> — current branch name</li>
+                <li><strong>Staged changes</strong> — files ready to commit</li>
+                <li><strong>Modified files</strong> — uncommitted changes</li>
+                <li><strong>Untracked files</strong> — new files not yet added</li>
+                <li><strong>Push status</strong> — commits ahead/behind remote</li>
+                <li><strong>Diff stats</strong> — lines added/removed</li>
+            </ul>
         </section>
 
         <!-- TUI -->
