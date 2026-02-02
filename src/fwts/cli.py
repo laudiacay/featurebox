@@ -416,11 +416,71 @@ def statusline(
     # Get focus info
     focused = get_focused_branch(config)
 
+    # Get git info for current directory
+    import subprocess
+
+    def git_cmd(args: list[str]) -> str:
+        try:
+            result = subprocess.run(
+                ["git"] + args, capture_output=True, text=True, cwd=cwd
+            )
+            return result.stdout.strip() if result.returncode == 0 else ""
+        except Exception:
+            return ""
+
+    branch = git_cmd(["rev-parse", "--abbrev-ref", "HEAD"])
+
+    # Git status indicators
+    status = git_cmd(["status", "--porcelain"])
+    staged = sum(1 for l in status.splitlines() if l and l[0] in "MADRC")
+    unstaged = sum(1 for l in status.splitlines() if l and len(l) > 1 and l[1] in "MADRC")
+    untracked = sum(1 for l in status.splitlines() if l.startswith("??"))
+
+    # Ahead/behind
+    ahead_behind = git_cmd(["rev-list", "--left-right", "--count", "@{u}...HEAD"])
+    ahead = behind = 0
+    if ahead_behind and "\t" in ahead_behind:
+        behind, ahead = map(int, ahead_behind.split("\t"))
+
+    # Diff stats against base branch
+    base = config.project.base_branch
+    diff_stat = git_cmd(["diff", "--shortstat", f"{base}...HEAD"])
+    insertions = deletions = 0
+    if diff_stat:
+        import re
+        ins = re.search(r"(\d+) insertion", diff_stat)
+        dels = re.search(r"(\d+) deletion", diff_stat)
+        if ins: insertions = int(ins.group(1))
+        if dels: deletions = int(dels.group(1))
+
     parts = []
 
     # Show project name if set
     if config.project.name:
         parts.append(f"[{config.project.name}]")
+
+    # Branch
+    if branch:
+        parts.append(branch)
+
+    # Git status indicators
+    status_parts = []
+    if staged: status_parts.append(f"+{staged}")
+    if unstaged: status_parts.append(f"~{unstaged}")
+    if untracked: status_parts.append(f"?{untracked}")
+    if status_parts:
+        parts.append("".join(status_parts))
+
+    # Ahead/behind
+    if ahead or behind:
+        ab = ""
+        if ahead: ab += f"↑{ahead}"
+        if behind: ab += f"↓{behind}"
+        parts.append(ab)
+
+    # Diff vs base
+    if insertions or deletions:
+        parts.append(f"+{insertions}/-{deletions}")
 
     # Show focused worktree
     if focused:
