@@ -190,16 +190,89 @@ async def get_ticket(identifier: str, api_key: str | None = None) -> TicketInfo:
         )
 
 
-async def get_branch_from_ticket(identifier: str, api_key: str | None = None) -> str:
+@dataclass
+class LinkedPR:
+    """A pull request linked to a Linear ticket."""
+
+    url: str
+    title: str | None
+    branch: str | None
+
+
+async def get_linked_prs(identifier: str, api_key: str | None = None) -> list[LinkedPR]:
+    """Get GitHub PRs linked to a Linear ticket.
+
+    Args:
+        identifier: Ticket identifier (e.g., "SUP-123") or URL
+        api_key: Linear API key
+
+    Returns:
+        List of linked PRs
+    """
+    if not api_key:
+        api_key = _get_api_key()
+
+    identifier = _parse_ticket_input(identifier)
+
+    # Query for issue with attachments
+    query = """
+    query IssueAttachments($id: String!) {
+        issue(id: $id) {
+            attachments {
+                nodes {
+                    url
+                    title
+                    metadata
+                    sourceType
+                }
+            }
+        }
+    }
+    """
+
+    data = await _run_query(query, {"id": identifier}, api_key)
+    attachments = data.get("issue", {}).get("attachments", {}).get("nodes", [])
+
+    prs = []
+    for att in attachments:
+        url = att.get("url", "")
+        # Check if it's a GitHub PR
+        if "github.com" in url and "/pull/" in url:
+            # Extract branch from metadata if available
+            metadata = att.get("metadata", {}) or {}
+            branch = metadata.get("branch") or metadata.get("head", {}).get("ref")
+            prs.append(LinkedPR(url=url, title=att.get("title"), branch=branch))
+
+    return prs
+
+
+async def get_branch_from_ticket(
+    identifier: str, api_key: str | None = None, check_linked_prs: bool = True
+) -> str:
     """Get the branch name for a Linear ticket.
 
     Args:
         identifier: Ticket identifier or URL
+        api_key: Linear API key
+        check_linked_prs: If True, also check for linked PRs and return their branch
 
     Returns:
-        Branch name from Linear
+        Branch name from Linear or linked PR
     """
     ticket = await get_ticket(identifier, api_key)
+
+    # First check if there are linked PRs (useful for reviewing others' code)
+    if check_linked_prs:
+        linked_prs = await get_linked_prs(identifier, api_key)
+        for pr in linked_prs:
+            if pr.branch:
+                return pr.branch
+            # If no branch in metadata, try to extract from URL and fetch via gh
+            if pr.url:
+                # Return URL to let caller handle it via gh CLI
+                # We use a special prefix to signal this is a PR URL
+                return f"pr:{pr.url}"
+
     if not ticket.branch_name:
         # Generate a branch name from the ticket
         safe_title = re.sub(r"[^a-zA-Z0-9]+", "-", ticket.title.lower()).strip("-")[:50]

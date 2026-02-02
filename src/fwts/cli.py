@@ -105,7 +105,7 @@ def _resolve_input_to_branch(input_str: str, config: Config) -> str | None:
 
     Accepts:
     - Branch name
-    - Linear ticket (SUP-123 or URL)
+    - Linear ticket (SUP-123 or URL) - also checks for linked PRs
     - GitHub PR (#123 or URL)
     """
     if not input_str:
@@ -115,7 +115,19 @@ def _resolve_input_to_branch(input_str: str, config: Config) -> str | None:
     is_linear = input_str.upper().startswith(("SUP-", "ENG-", "DEV-")) or "linear.app" in input_str
     if is_linear and config.linear.enabled:
         try:
-            return asyncio.run(get_branch_from_ticket(input_str, config.linear.api_key))
+            result = asyncio.run(get_branch_from_ticket(input_str, config.linear.api_key))
+            # Check if result is a PR URL (for reviewing others' code)
+            if result and result.startswith("pr:"):
+                pr_url = result[3:]  # Remove "pr:" prefix
+                console.print(f"[blue]Found linked PR: {pr_url}[/blue]")
+                if has_gh_cli() and config.project.github_repo:
+                    branch = get_branch_from_pr(pr_url, config.project.github_repo)
+                    if branch:
+                        return branch
+                # If we couldn't get branch from gh, return None to let user know
+                console.print("[yellow]Could not get branch from linked PR[/yellow]")
+                return None
+            return result
         except Exception as e:
             console.print(f"[yellow]Could not resolve Linear ticket: {e}[/yellow]")
             return None
