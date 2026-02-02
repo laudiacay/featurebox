@@ -18,14 +18,17 @@
             --accent: #22c55e;
             --accent-dim: #16a34a;
             --border: #27272a;
-            --gradient-start: #22c55e;
-            --gradient-end: #10b981;
+            --sidebar-width: 260px;
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
         }
 
         body {
@@ -35,29 +38,24 @@
             line-height: 1.6;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 24px;
-        }
-
-        /* Nav */
-        nav {
+        /* Sidebar */
+        .sidebar {
             position: fixed;
             top: 0;
             left: 0;
-            right: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            padding: 24px 0;
+            overflow-y: auto;
             z-index: 100;
-            padding: 16px 0;
-            background: rgba(10, 10, 11, 0.8);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--border);
         }
 
-        nav .container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .sidebar-header {
+            padding: 0 24px 24px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 16px;
         }
 
         .logo {
@@ -66,31 +64,150 @@
             font-weight: 700;
             color: var(--accent);
             text-decoration: none;
+            display: block;
+            margin-bottom: 4px;
         }
 
-        .nav-links {
-            display: flex;
-            gap: 32px;
-            align-items: center;
+        .logo-tagline {
+            font-size: 0.75rem;
+            color: var(--text-muted);
         }
 
-        .nav-links a {
+        .sidebar-nav {
+            padding: 0 12px;
+        }
+
+        .nav-section {
+            margin-bottom: 24px;
+        }
+
+        .nav-section-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0 12px;
+            margin-bottom: 8px;
+        }
+
+        .nav-link {
+            display: block;
+            padding: 8px 12px;
             color: var(--text-muted);
             text-decoration: none;
             font-size: 0.9rem;
-            font-weight: 500;
-            transition: color 0.2s;
+            border-radius: 6px;
+            transition: all 0.15s;
         }
 
-        .nav-links a:hover {
+        .nav-link:hover {
             color: var(--text);
+            background: var(--bg-tertiary);
+        }
+
+        .nav-link.active {
+            color: var(--accent);
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .sidebar-footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 16px 24px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-secondary);
+        }
+
+        .sidebar-footer a {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.15s;
+        }
+
+        .sidebar-footer a:hover {
+            color: var(--text);
+        }
+
+        /* Main Content */
+        .main {
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+        }
+
+        .section {
+            padding: 80px 60px;
+            border-bottom: 1px solid var(--border);
+            max-width: 900px;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+
+        .section-subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+            max-width: 600px;
+        }
+
+        /* Hero Section */
+        #overview {
+            padding-top: 100px;
+            position: relative;
+        }
+
+        #overview::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(34, 197, 94, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero-title {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 700;
+            line-height: 1.15;
+            margin-bottom: 20px;
+        }
+
+        .hero-title span {
+            background: linear-gradient(135deg, var(--accent), #10b981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-desc {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+            max-width: 550px;
         }
 
         .btn {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 10px 20px;
+            padding: 12px 24px;
             border-radius: 8px;
             font-weight: 600;
             font-size: 0.9rem;
@@ -120,64 +237,21 @@
             background: var(--border);
         }
 
-        /* Hero */
-        .hero {
-            padding: 160px 0 100px;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .hero::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 800px;
-            height: 800px;
-            background: radial-gradient(circle, rgba(34, 197, 94, 0.1) 0%, transparent 70%);
-            pointer-events: none;
-        }
-
-        .hero h1 {
-            font-size: clamp(2.5rem, 6vw, 4rem);
-            font-weight: 700;
-            line-height: 1.1;
-            margin-bottom: 24px;
-            letter-spacing: -0.02em;
-        }
-
-        .hero h1 span {
-            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .hero p {
-            font-size: 1.25rem;
-            color: var(--text-muted);
-            max-width: 600px;
-            margin: 0 auto 40px;
-        }
-
         .hero-buttons {
             display: flex;
-            gap: 16px;
-            justify-content: center;
+            gap: 12px;
             flex-wrap: wrap;
+            margin-bottom: 40px;
         }
 
         .install-cmd {
-            margin-top: 48px;
             display: inline-flex;
             align-items: center;
             gap: 12px;
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 12px 20px;
+            padding: 14px 20px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.9rem;
         }
@@ -199,19 +273,14 @@
             color: var(--text);
         }
 
-        /* Demo */
-        .demo {
-            padding: 60px 0;
-        }
-
+        /* Terminal Demo */
         .terminal {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 12px;
             overflow: hidden;
-            max-width: 900px;
-            margin: 0 auto;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            margin-top: 48px;
+            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.4);
         }
 
         .terminal-header {
@@ -234,9 +303,9 @@
         .terminal-dot.green { background: #22c55e; }
 
         .terminal-body {
-            padding: 24px;
+            padding: 20px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             line-height: 1.8;
             overflow-x: auto;
         }
@@ -245,103 +314,62 @@
             white-space: pre;
         }
 
-        .terminal-prompt {
-            color: var(--accent);
-        }
+        .terminal-prompt { color: var(--accent); }
+        .terminal-comment { color: var(--text-muted); }
+        .terminal-output { color: var(--text-muted); }
 
-        .terminal-comment {
-            color: var(--text-muted);
-        }
-
-        .terminal-output {
-            color: var(--text-muted);
-        }
-
-        /* Features */
-        .features {
-            padding: 100px 0;
-        }
-
-        .section-header {
-            text-align: center;
-            margin-bottom: 64px;
-        }
-
-        .section-header h2 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 16px;
-        }
-
-        .section-header p {
-            color: var(--text-muted);
-            font-size: 1.1rem;
-            max-width: 600px;
-            margin: 0 auto;
-        }
-
+        /* Features Grid */
         .features-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 24px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
         }
 
         .feature-card {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 32px;
-            transition: border-color 0.2s, transform 0.2s;
+            border-radius: 10px;
+            padding: 24px;
+            transition: border-color 0.2s;
         }
 
         .feature-card:hover {
             border-color: var(--accent);
-            transform: translateY(-2px);
         }
 
         .feature-icon {
-            width: 48px;
-            height: 48px;
-            background: var(--bg-tertiary);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 20px;
             font-size: 1.5rem;
+            margin-bottom: 12px;
         }
 
         .feature-card h3 {
-            font-size: 1.25rem;
-            margin-bottom: 12px;
+            font-size: 1rem;
+            margin-bottom: 8px;
         }
 
         .feature-card p {
             color: var(--text-muted);
-            font-size: 0.95rem;
+            font-size: 0.9rem;
+            line-height: 1.5;
         }
 
-        /* Workflow */
-        .workflow {
-            padding: 100px 0;
-            background: var(--bg-secondary);
-        }
-
+        /* Workflow Steps */
         .workflow-steps {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 32px;
-            margin-top: 48px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
         }
 
         .workflow-step {
-            text-align: center;
-            padding: 24px;
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
         }
 
         .step-number {
-            width: 48px;
-            height: 48px;
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
             background: var(--accent);
             color: var(--bg);
             border-radius: 50%;
@@ -349,38 +377,42 @@
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            font-size: 1.25rem;
-            margin: 0 auto 20px;
+            font-size: 1rem;
         }
 
-        .workflow-step h3 {
+        .step-content h3 {
             font-size: 1.1rem;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
         }
 
-        .workflow-step p {
+        .step-content p {
             color: var(--text-muted);
             font-size: 0.9rem;
         }
 
-        /* Comparison */
-        .comparison {
-            padding: 100px 0;
+        .step-content code {
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85em;
+            color: var(--accent);
         }
 
+        /* Comparison */
         .comparison-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 48px;
             background: var(--bg-secondary);
-            border-radius: 12px;
+            border-radius: 10px;
             overflow: hidden;
             border: 1px solid var(--border);
+            font-size: 0.9rem;
         }
 
         .comparison-table th,
         .comparison-table td {
-            padding: 20px 24px;
+            padding: 16px 20px;
             text-align: left;
             border-bottom: 1px solid var(--border);
         }
@@ -388,11 +420,7 @@
         .comparison-table th {
             background: var(--bg-tertiary);
             font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        .comparison-table th:first-child {
-            width: 40%;
+            font-size: 0.85rem;
         }
 
         .comparison-table tr:last-child td {
@@ -401,89 +429,125 @@
 
         .comparison-table td {
             color: var(--text-muted);
-            font-size: 0.9rem;
-        }
-
-        .check {
-            color: var(--accent);
-            font-size: 1.2rem;
-        }
-
-        .cross {
-            color: #ef4444;
-            font-size: 1.2rem;
-        }
-
-        .partial {
-            color: #eab308;
-            font-size: 0.85rem;
         }
 
         .highlight-col {
             background: rgba(34, 197, 94, 0.05);
         }
 
-        /* CTA */
-        .cta {
-            padding: 100px 0;
-            text-align: center;
-            background: linear-gradient(180deg, var(--bg) 0%, var(--bg-secondary) 100%);
-        }
+        .check { color: var(--accent); }
+        .cross { color: #ef4444; }
+        .partial { color: #eab308; font-size: 0.8rem; }
 
-        .cta h2 {
-            font-size: 2.5rem;
-            margin-bottom: 16px;
-        }
-
-        .cta p {
-            color: var(--text-muted);
-            font-size: 1.1rem;
-            margin-bottom: 32px;
-        }
-
-        /* Footer */
-        footer {
-            padding: 48px 0;
-            border-top: 1px solid var(--border);
-        }
-
-        footer .container {
+        /* Integrations */
+        .integration-list {
             display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .integration-item {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            padding: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+
+        .integration-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .integration-item h3 {
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+
+        .integration-item p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Install Section */
+        .install-options {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .install-option {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .install-option h3 {
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+            color: var(--text-muted);
+        }
+
+        .install-option pre {
+            background: var(--bg-tertiary);
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--accent);
+            overflow-x: auto;
+        }
+
+        /* Mobile */
+        .mobile-header {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 101;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 20px;
             justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
-            gap: 24px;
         }
 
-        .footer-links {
-            display: flex;
-            gap: 24px;
-        }
-
-        .footer-links a {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.9rem;
-            transition: color 0.2s;
-        }
-
-        .footer-links a:hover {
+        .menu-toggle {
+            background: none;
+            border: none;
             color: var(--text);
+            font-size: 1.5rem;
+            cursor: pointer;
         }
 
-        .footer-credit {
-            color: var(--text-muted);
-            font-size: 0.85rem;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .nav-links {
-                display: none;
+        @media (max-width: 900px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s;
             }
 
-            .hero {
-                padding: 120px 0 60px;
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .mobile-header {
+                display: flex;
+            }
+
+            .main {
+                margin-left: 0;
+            }
+
+            .section {
+                padding: 100px 24px 60px;
+            }
+
+            #overview {
+                padding-top: 120px;
             }
 
             .features-grid {
@@ -496,37 +560,63 @@
 
             .comparison-table th,
             .comparison-table td {
-                padding: 12px 16px;
+                padding: 12px;
             }
         }
     </style>
 </head>
 <body>
-    <nav>
-        <div class="container">
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+        <a href="#" class="logo">fwts</a>
+        <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
             <a href="#" class="logo">fwts</a>
-            <div class="nav-links">
-                <a href="#features">Features</a>
-                <a href="#workflow">How it works</a>
-                <a href="#comparison">Compare</a>
-                <a href="https://github.com/laudiacay/featurebox" target="_blank" class="btn btn-secondary">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            <div class="logo-tagline">Worktree Workflow Manager</div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">Getting Started</div>
+                <a href="#overview" class="nav-link active">Overview</a>
+                <a href="#install" class="nav-link">Installation</a>
+                <a href="#quickstart" class="nav-link">Quick Start</a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">Features</div>
+                <a href="#core-features" class="nav-link">Core Features</a>
+                <a href="#integrations" class="nav-link">Integrations</a>
+                <a href="#tui" class="nav-link">Interactive TUI</a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">More</div>
+                <a href="#comparison" class="nav-link">Comparison</a>
+                <a href="#workflow" class="nav-link">Workflow</a>
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <a href="https://github.com/laudiacay/featurebox" target="_blank">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                GitHub
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Overview -->
+        <section id="overview" class="section">
+            <h1 class="hero-title">Stop context-switching.<br><span>Start shipping.</span></h1>
+            <p class="hero-desc">fwts orchestrates git worktrees, tmux sessions, Docker services, and your dev tools. Work on multiple features in parallel without the chaos.</p>
+            <div class="hero-buttons">
+                <a href="#install" class="btn btn-primary">Get Started</a>
+                <a href="https://github.com/laudiacay/featurebox" class="btn btn-secondary">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
                     GitHub
                 </a>
-            </div>
-        </div>
-    </nav>
-
-    <section class="hero">
-        <div class="container">
-            <h1>Stop context-switching.<br><span>Start shipping.</span></h1>
-            <p>fwts orchestrates git worktrees, tmux sessions, Docker services, and your dev tools. Work on multiple features in parallel without the chaos.</p>
-            <div class="hero-buttons">
-                <a href="https://github.com/laudiacay/featurebox" class="btn btn-primary">
-                    Get Started
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </a>
-                <a href="#features" class="btn btn-secondary">See Features</a>
             </div>
             <div class="install-cmd">
                 <code>brew install laudiacay/tap/fwts</code>
@@ -534,11 +624,7 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
                 </button>
             </div>
-        </div>
-    </section>
 
-    <section class="demo">
-        <div class="container">
             <div class="terminal">
                 <div class="terminal-header">
                     <div class="terminal-dot red"></div>
@@ -546,32 +632,72 @@
                     <div class="terminal-dot green"></div>
                 </div>
                 <div class="terminal-body">
-                    <div class="terminal-line"><span class="terminal-comment"># Start working on a Linear ticket - one command does everything</span></div>
+                    <div class="terminal-line"><span class="terminal-comment"># Start working on a Linear ticket</span></div>
                     <div class="terminal-line"><span class="terminal-prompt">$</span> fwts start SUP-123</div>
-                    <div class="terminal-line terminal-output">✓ Resolved SUP-123 → branch sup-123-add-user-auth</div>
-                    <div class="terminal-line terminal-output">✓ Created worktree at ~/code/myapp-worktrees/sup-123-add-user-auth</div>
-                    <div class="terminal-line terminal-output">✓ Started Docker services (postgres, redis)</div>
-                    <div class="terminal-line terminal-output">✓ Running npm install...</div>
-                    <div class="terminal-line terminal-output">✓ Created tmux session with nvim + claude</div>
+                    <div class="terminal-line terminal-output">✓ Resolved SUP-123 → sup-123-add-user-auth</div>
+                    <div class="terminal-line terminal-output">✓ Created worktree + tmux + Docker</div>
                     <div class="terminal-line terminal-output">✓ Attached to session</div>
                     <div class="terminal-line"></div>
-                    <div class="terminal-line"><span class="terminal-comment"># Later: switch to another feature</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">$</span> fwts focus sup-456-fix-billing</div>
-                    <div class="terminal-line terminal-output">✓ Switched focus: database now connected to sup-456-fix-billing</div>
-                    <div class="terminal-line"></div>
-                    <div class="terminal-line"><span class="terminal-comment"># Interactive TUI to see all your work</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">$</span> fwts</div>
+                    <div class="terminal-line"><span class="terminal-comment"># Switch focus to another feature</span></div>
+                    <div class="terminal-line"><span class="terminal-prompt">$</span> fwts focus hotfix-billing</div>
+                    <div class="terminal-line terminal-output">✓ Database now connected to hotfix-billing</div>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <section class="features" id="features">
-        <div class="container">
-            <div class="section-header">
-                <h2>Everything you need for parallel development</h2>
-                <p>Stop juggling terminals, ports, and branches. fwts handles the orchestration so you can focus on code.</p>
+        <!-- Installation -->
+        <section id="install" class="section">
+            <h2 class="section-title">Installation</h2>
+            <p class="section-subtitle">Get fwts running in seconds.</p>
+            <div class="install-options">
+                <div class="install-option">
+                    <h3>Homebrew (recommended)</h3>
+                    <pre>brew install laudiacay/tap/fwts</pre>
+                </div>
+                <div class="install-option">
+                    <h3>PyPI</h3>
+                    <pre>pip install fwts</pre>
+                </div>
+                <div class="install-option">
+                    <h3>uv</h3>
+                    <pre>uv tool install fwts</pre>
+                </div>
             </div>
+        </section>
+
+        <!-- Quick Start -->
+        <section id="quickstart" class="section">
+            <h2 class="section-title">Quick Start</h2>
+            <p class="section-subtitle">Get productive in 3 commands.</p>
+            <div class="workflow-steps">
+                <div class="workflow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Initialize your project</h3>
+                        <p>Run <code>fwts init</code> in your repo to create a config file.</p>
+                    </div>
+                </div>
+                <div class="workflow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Start a feature</h3>
+                        <p>Run <code>fwts start TICKET-123</code> or <code>fwts start my-feature-branch</code>.</p>
+                    </div>
+                </div>
+                <div class="workflow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Open the dashboard</h3>
+                        <p>Run <code>fwts</code> to see all your worktrees and manage them interactively.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Core Features -->
+        <section id="core-features" class="section">
+            <h2 class="section-title">Core Features</h2>
+            <p class="section-subtitle">Everything you need for parallel feature development.</p>
             <div class="features-grid">
                 <div class="feature-card">
                     <div class="feature-icon">🌳</div>
@@ -590,13 +716,8 @@
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">🐳</div>
-                    <h3>Docker Compose Orchestration</h3>
+                    <h3>Docker Compose</h3>
                     <p>Start isolated Docker services per feature with automatic project isolation. No more port conflicts.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">📋</div>
-                    <h3>Linear & GitHub Integration</h3>
-                    <p>Resolve ticket IDs to branches. See PR status, CI results, and review state right in your terminal dashboard.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">⚡</div>
@@ -604,68 +725,84 @@
                     <p>Run custom commands on setup, focus, unfocus, and cleanup. Auto-install deps, run migrations, sync .env files.</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon">📊</div>
-                    <h3>Interactive TUI</h3>
-                    <p>Beautiful terminal dashboard showing all worktrees, their status, CI state, and PR reviews. Multi-select operations.</p>
-                </div>
-                <div class="feature-card">
                     <div class="feature-icon">🔧</div>
                     <h3>Custom Status Columns</h3>
                     <p>Define your own dashboard columns with shell commands. Show deployment status, test coverage, or anything else.</p>
                 </div>
+            </div>
+        </section>
+
+        <!-- Integrations -->
+        <section id="integrations" class="section">
+            <h2 class="section-title">Integrations</h2>
+            <p class="section-subtitle">Connects with your existing tools.</p>
+            <div class="integration-list">
+                <div class="integration-item">
+                    <div class="integration-icon">📋</div>
+                    <div>
+                        <h3>Linear</h3>
+                        <p>Resolve ticket IDs to branch names. Browse your assigned tickets and review queue directly from the TUI.</p>
+                    </div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-icon">🐙</div>
+                    <div>
+                        <h3>GitHub</h3>
+                        <p>See PR status, CI results, and review state for each worktree. Resolve PR numbers to branches.</p>
+                    </div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-icon">🤖</div>
+                    <div>
+                        <h3>Claude Code</h3>
+                        <p>Pass ticket context to Claude when starting worktrees. Statusline command for shell prompt integration.</p>
+                    </div>
+                </div>
+                <div class="integration-item">
+                    <div class="integration-icon">📊</div>
+                    <div>
+                        <h3>Graphite</h3>
+                        <p>Optional stacking workflow integration for teams using Graphite.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TUI -->
+        <section id="tui" class="section">
+            <h2 class="section-title">Interactive TUI</h2>
+            <p class="section-subtitle">A beautiful terminal dashboard for all your work.</p>
+            <div class="features-grid">
                 <div class="feature-card">
-                    <div class="feature-icon">🏢</div>
-                    <h3>Multi-Project Support</h3>
-                    <p>Manage worktrees across multiple repositories from a single global config. Switch between projects seamlessly.</p>
+                    <h3>Multiple Views</h3>
+                    <p>Switch between Worktrees, My Tickets, Review Queue, and All Tickets.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Keyboard-Driven</h3>
+                    <p>Navigate with j/k, select with space, launch with enter, cleanup with d, focus with f.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Multi-Select</h3>
+                    <p>Select multiple worktrees and perform bulk operations.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Real-Time Status</h3>
+                    <p>Auto-refreshes with CI status, PR reviews, and custom column data.</p>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <section class="workflow" id="workflow">
-        <div class="container">
-            <div class="section-header">
-                <h2>How it works</h2>
-                <p>From ticket to shipping in one smooth workflow</p>
-            </div>
-            <div class="workflow-steps">
-                <div class="workflow-step">
-                    <div class="step-number">1</div>
-                    <h3>Start a feature</h3>
-                    <p>Run <code>fwts start TICKET-123</code>. fwts creates a worktree, starts Docker, opens tmux, and runs your setup hooks.</p>
-                </div>
-                <div class="workflow-step">
-                    <div class="step-number">2</div>
-                    <h3>Work in isolation</h3>
-                    <p>Each feature has its own directory, tmux session, and Docker services. No conflicts, no stashing, no confusion.</p>
-                </div>
-                <div class="workflow-step">
-                    <div class="step-number">3</div>
-                    <h3>Switch context instantly</h3>
-                    <p>Need to hotfix? Run <code>fwts focus hotfix-branch</code>. Shared resources (DB, ports) switch over automatically.</p>
-                </div>
-                <div class="workflow-step">
-                    <div class="step-number">4</div>
-                    <h3>Clean up when done</h3>
-                    <p>Run <code>fwts cleanup</code>. Worktree deleted, tmux killed, Docker stopped, remote branch removed. One command.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="comparison" id="comparison">
-        <div class="container">
-            <div class="section-header">
-                <h2>Why fwts?</h2>
-                <p>Built for developers who actually use worktrees</p>
-            </div>
+        <!-- Comparison -->
+        <section id="comparison" class="section">
+            <h2 class="section-title">Why fwts?</h2>
+            <p class="section-subtitle">More than just worktree creation.</p>
             <table class="comparison-table">
                 <thead>
                     <tr>
                         <th>Feature</th>
                         <th class="highlight-col">fwts</th>
                         <th>git-worktree</th>
-                        <th>Other tools</th>
+                        <th>Others</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -676,46 +813,40 @@
                         <td><span class="check">✓</span></td>
                     </tr>
                     <tr>
-                        <td>Tmux session orchestration</td>
+                        <td>Tmux orchestration</td>
                         <td class="highlight-col"><span class="check">✓</span></td>
                         <td><span class="cross">✗</span></td>
                         <td><span class="cross">✗</span></td>
                     </tr>
                     <tr>
-                        <td>Docker Compose per-feature</td>
+                        <td>Docker per-feature</td>
                         <td class="highlight-col"><span class="check">✓</span></td>
                         <td><span class="cross">✗</span></td>
                         <td><span class="cross">✗</span></td>
                     </tr>
                     <tr>
-                        <td>Focus/resource sharing system</td>
+                        <td>Focus/resource system</td>
                         <td class="highlight-col"><span class="check">✓</span></td>
                         <td><span class="cross">✗</span></td>
                         <td><span class="cross">✗</span></td>
                     </tr>
                     <tr>
-                        <td>Linear ticket resolution</td>
+                        <td>Linear integration</td>
                         <td class="highlight-col"><span class="check">✓</span></td>
                         <td><span class="cross">✗</span></td>
                         <td><span class="partial">Varies</span></td>
-                    </tr>
-                    <tr>
-                        <td>GitHub PR status in TUI</td>
-                        <td class="highlight-col"><span class="check">✓</span></td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="partial">Varies</span></td>
-                    </tr>
-                    <tr>
-                        <td>Lifecycle hooks</td>
-                        <td class="highlight-col"><span class="check">✓</span></td>
-                        <td><span class="cross">✗</span></td>
-                        <td><span class="partial">Limited</span></td>
                     </tr>
                     <tr>
                         <td>Interactive dashboard</td>
                         <td class="highlight-col"><span class="check">✓</span></td>
                         <td><span class="cross">✗</span></td>
                         <td><span class="partial">Basic</span></td>
+                    </tr>
+                    <tr>
+                        <td>Lifecycle hooks</td>
+                        <td class="highlight-col"><span class="check">✓</span></td>
+                        <td><span class="cross">✗</span></td>
+                        <td><span class="partial">Limited</span></td>
                     </tr>
                     <tr>
                         <td>Atomic cleanup</td>
@@ -725,34 +856,80 @@
                     </tr>
                 </tbody>
             </table>
-        </div>
-    </section>
+        </section>
 
-    <section class="cta">
-        <div class="container">
-            <h2>Ready to ship faster?</h2>
-            <p>Install fwts and transform your worktree workflow.</p>
-            <div class="hero-buttons">
-                <a href="https://github.com/laudiacay/featurebox" class="btn btn-primary">
-                    View on GitHub
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </a>
-                <a href="https://github.com/laudiacay/featurebox#installation" class="btn btn-secondary">Installation Guide</a>
+        <!-- Workflow -->
+        <section id="workflow" class="section">
+            <h2 class="section-title">The Workflow</h2>
+            <p class="section-subtitle">From ticket to shipped, seamlessly.</p>
+            <div class="workflow-steps">
+                <div class="workflow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Start a feature</h3>
+                        <p><code>fwts start SUP-123</code> — Creates worktree, starts Docker, opens tmux, runs setup hooks.</p>
+                    </div>
+                </div>
+                <div class="workflow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Work in isolation</h3>
+                        <p>Each feature has its own directory, tmux session, and Docker services. No conflicts.</p>
+                    </div>
+                </div>
+                <div class="workflow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Switch context</h3>
+                        <p><code>fwts focus hotfix-branch</code> — Shared resources switch over automatically.</p>
+                    </div>
+                </div>
+                <div class="workflow-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Clean up</h3>
+                        <p><code>fwts cleanup</code> — Worktree deleted, tmux killed, Docker stopped, branch removed. One command.</p>
+                    </div>
+                </div>
             </div>
-        </div>
-    </section>
+        </section>
+    </main>
 
-    <footer>
-        <div class="container">
-            <div class="footer-links">
-                <a href="https://github.com/laudiacay/featurebox">GitHub</a>
-                <a href="https://github.com/laudiacay/featurebox#readme">Docs</a>
-                <a href="https://github.com/laudiacay/featurebox/issues">Issues</a>
-            </div>
-            <div class="footer-credit">
-                Made for developers who ship
-            </div>
-        </div>
-    </footer>
+    <script>
+        // Highlight active nav link on scroll
+        const sections = document.querySelectorAll('.section');
+        const navLinks = document.querySelectorAll('.nav-link');
+
+        function updateActiveNav() {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - 120;
+                if (scrollY >= sectionTop) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        }
+
+        window.addEventListener('scroll', updateActiveNav);
+
+        // Mobile sidebar toggle
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+
+        // Close sidebar on nav link click (mobile)
+        navLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                document.getElementById('sidebar').classList.remove('open');
+            });
+        });
+    </script>
 </body>
 </html>
