@@ -15,8 +15,8 @@
             --bg-tertiary: #f5f5f4;
             --text: #1c1917;
             --text-muted: #78716c;
-            --accent: #8c6d4a;
-            --accent-dim: #7a5f40;
+            --accent: #0d9488;
+            --accent-dim: #0f766e;
             --border: #e7e5e4;
             --sidebar-width: 260px;
         }
@@ -108,7 +108,7 @@
 
         .nav-link.active {
             color: var(--accent);
-            background: rgba(140, 109, 74, 0.1);
+            background: rgba(13, 148, 136, 0.1);
         }
 
         .sidebar-footer {
@@ -178,7 +178,7 @@
             left: 0;
             width: 600px;
             height: 600px;
-            background: radial-gradient(circle, rgba(140, 109, 74, 0.08) 0%, transparent 70%);
+            background: radial-gradient(circle, rgba(13, 148, 136, 0.08) 0%, transparent 70%);
             pointer-events: none;
         }
 
@@ -190,7 +190,7 @@
         }
 
         .hero-title span {
-            background: linear-gradient(135deg, var(--accent), #a67c52);
+            background: linear-gradient(135deg, var(--accent), #14b8a6);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -248,8 +248,8 @@
             display: inline-flex;
             align-items: center;
             gap: 12px;
-            background: #1c1917;
-            border: 1px solid #3f3f46;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
             border-radius: 8px;
             padding: 14px 20px;
             font-family: 'JetBrains Mono', monospace;
@@ -257,30 +257,30 @@
         }
 
         .install-cmd code {
-            color: #c4a574;
+            color: var(--accent);
         }
 
         .install-cmd button {
             background: none;
             border: none;
-            color: #a8a29e;
+            color: var(--text-muted);
             cursor: pointer;
             padding: 4px;
             transition: color 0.2s;
         }
 
         .install-cmd button:hover {
-            color: #fafaf9;
+            color: var(--text);
         }
 
         /* Terminal Demo */
         .terminal {
-            background: #1c1917;
+            background: var(--bg-tertiary);
             border: 1px solid var(--border);
             border-radius: 12px;
             overflow: hidden;
             margin-top: 48px;
-            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
         }
 
         .terminal-header {
@@ -288,8 +288,8 @@
             align-items: center;
             gap: 8px;
             padding: 12px 16px;
-            background: #292524;
-            border-bottom: 1px solid #3f3f46;
+            background: #e7e5e4;
+            border-bottom: 1px solid var(--border);
         }
 
         .terminal-dot {
@@ -298,9 +298,9 @@
             border-radius: 50%;
         }
 
-        .terminal-dot.red { background: #f87171; }
-        .terminal-dot.yellow { background: #fbbf24; }
-        .terminal-dot.green { background: #4ade80; }
+        .terminal-dot.red { background: #fca5a5; }
+        .terminal-dot.yellow { background: #fcd34d; }
+        .terminal-dot.green { background: #6ee7b7; }
 
         .terminal-body {
             padding: 20px;
@@ -314,9 +314,9 @@
             white-space: pre;
         }
 
-        .terminal-prompt { color: #c4a574; }
-        .terminal-comment { color: #a8a29e; }
-        .terminal-output { color: #d6d3d1; }
+        .terminal-prompt { color: var(--accent); }
+        .terminal-comment { color: var(--text-muted); }
+        .terminal-output { color: #57534e; }
 
         /* Features Grid */
         .features-grid {
@@ -391,12 +391,12 @@
         }
 
         .step-content code {
-            background: #1c1917;
+            background: var(--bg-tertiary);
             padding: 2px 6px;
             border-radius: 4px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.85em;
-            color: #c4a574;
+            color: var(--accent);
         }
 
         /* Comparison */
@@ -432,7 +432,7 @@
         }
 
         .highlight-col {
-            background: rgba(140, 109, 74, 0.08);
+            background: rgba(13, 148, 136, 0.08);
         }
 
         .check { color: #16a34a; }
@@ -492,12 +492,12 @@
         }
 
         .install-option pre {
-            background: #1c1917;
+            background: var(--bg-tertiary);
             padding: 12px 16px;
             border-radius: 6px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.85rem;
-            color: #c4a574;
+            color: var(--accent);
             overflow-x: auto;
         }
 
