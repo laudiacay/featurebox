@@ -378,15 +378,36 @@ def statusline(
     Prints a single line with focused worktree and brief status.
     Designed for use in shell prompts or Claude Code statusline.
     """
+    import os
+    cwd = Path.cwd().resolve()
+
     try:
         config = _get_config(project, config_path)
     except Exception:
         # No config found - show current directory basename
-        import os
-        print(f"📁{os.path.basename(os.getcwd())}")
+        print(f"📁{cwd.name}")
         return
 
     main_repo = config.project.main_repo.expanduser().resolve()
+    worktree_base = config.project.worktree_base.expanduser().resolve()
+
+    # Check if we're actually in this project's directory tree
+    in_project = False
+    try:
+        cwd.relative_to(main_repo)
+        in_project = True
+    except ValueError:
+        try:
+            cwd.relative_to(worktree_base)
+            in_project = True
+        except ValueError:
+            pass
+
+    if not in_project:
+        # We're not in this project - just show directory name
+        print(f"📁{cwd.name}")
+        return
+
     worktrees = list_worktrees(main_repo)
     feature_worktrees = [
         wt for wt in worktrees if not wt.is_bare and wt.branch != config.project.base_branch
@@ -396,6 +417,10 @@ def statusline(
     focused = get_focused_branch(config)
 
     parts = []
+
+    # Show project name if set
+    if config.project.name:
+        parts.append(f"[{config.project.name}]")
 
     # Show focused worktree
     if focused:
@@ -408,6 +433,8 @@ def statusline(
 
     if parts:
         print(" ".join(parts))
+    else:
+        print(f"📁{cwd.name}")
 
 
 @app.command()
