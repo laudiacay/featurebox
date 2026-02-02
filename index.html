@@ -719,10 +719,10 @@
                 <div class="workflow-step">
                     <div class="step-number">4</div>
                     <div class="step-content">
-                        <h3>Set up Claude Code</h3>
-                        <p>Copy this prompt and paste it into Claude:</p>
-                        <div class="copy-prompt" onclick="navigator.clipboard.writeText('Set my Claude statusline to: $(fwts statusline)')">
-                            <span>Set my Claude statusline to: $(fwts statusline)</span>
+                        <h3>Set up Claude Code statusline</h3>
+                        <p>Run this to configure Claude with your git status:</p>
+                        <div class="copy-prompt" onclick="navigator.clipboard.writeText(&quot;claude -p \&quot;Set my Claude statusline to use fwts. Here's compact mode: $(fwts statusline) and here's --obvious mode: $(fwts statusline --obvious). Ask me which I prefer.\&quot;&quot;)">
+                            <span>claude -p "Set my statusline to fwts. Compact: $(fwts statusline), Obvious: $(fwts statusline --obvious). Ask me which."</span>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
                         </div>
                     </div>
