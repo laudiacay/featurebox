@@ -372,14 +372,24 @@ def focus(
 def statusline(
     project: ProjectOption = None,
     config_path: ConfigOption = None,
+    directory: Annotated[
+        Path | None,
+        typer.Option("--dir", "-d", help="Directory to check (default: current)"),
+    ] = None,
+    obvious: Annotated[
+        bool,
+        typer.Option("--obvious", "-o", help="Use words instead of symbols"),
+    ] = False,
 ) -> None:
     """Output compact status for shell/statusline integration.
 
     Prints a single line with focused worktree and brief status.
     Designed for use in shell prompts or Claude Code statusline.
+
+    Use --obvious for human-readable output instead of symbols.
     """
     import os
-    cwd = Path.cwd().resolve()
+    cwd = (directory or Path.cwd()).resolve()
 
     try:
         config = _get_config(project, config_path)
@@ -463,33 +473,56 @@ def statusline(
     if branch:
         parts.append(branch)
 
-    # Git status indicators
-    status_parts = []
-    if staged: status_parts.append(f"+{staged}")
-    if unstaged: status_parts.append(f"~{unstaged}")
-    if untracked: status_parts.append(f"?{untracked}")
-    if status_parts:
-        parts.append("".join(status_parts))
+    if obvious:
+        # Human-readable format
+        if staged or unstaged or untracked:
+            status_desc = []
+            if staged: status_desc.append(f"{staged} staged")
+            if unstaged: status_desc.append(f"{unstaged} modified")
+            if untracked: status_desc.append(f"{untracked} new")
+            parts.append(f"({', '.join(status_desc)})")
 
-    # Ahead/behind
-    if ahead or behind:
-        ab = ""
-        if ahead: ab += f"↑{ahead}"
-        if behind: ab += f"↓{behind}"
-        parts.append(ab)
+        if ahead or behind:
+            if ahead and behind:
+                parts.append(f"({ahead} ahead, {behind} behind)")
+            elif ahead:
+                parts.append(f"({ahead} to push)")
+            else:
+                parts.append(f"({behind} to pull)")
 
-    # Diff vs base
-    if insertions or deletions:
-        parts.append(f"+{insertions}/-{deletions}")
+        if insertions or deletions:
+            parts.append(f"(+{insertions}/-{deletions} vs {base})")
 
-    # Show focused worktree
-    if focused:
-        parts.append(f"🎯{focused}")
+        if focused:
+            parts.append(f"focused:{focused}")
 
-    # Show worktree count
-    wt_count = len(feature_worktrees)
-    if wt_count > 0:
-        parts.append(f"{wt_count}wt")
+        wt_count = len(feature_worktrees)
+        if wt_count > 0:
+            parts.append(f"{wt_count} worktrees")
+    else:
+        # Compact symbol format
+        status_parts = []
+        if staged: status_parts.append(f"+{staged}")
+        if unstaged: status_parts.append(f"~{unstaged}")
+        if untracked: status_parts.append(f"?{untracked}")
+        if status_parts:
+            parts.append("".join(status_parts))
+
+        if ahead or behind:
+            ab = ""
+            if ahead: ab += f"↑{ahead}"
+            if behind: ab += f"↓{behind}"
+            parts.append(ab)
+
+        if insertions or deletions:
+            parts.append(f"+{insertions}/-{deletions}")
+
+        if focused:
+            parts.append(f"🎯{focused}")
+
+        wt_count = len(feature_worktrees)
+        if wt_count > 0:
+            parts.append(f"{wt_count}wt")
 
     if parts:
         print(" ".join(parts))
