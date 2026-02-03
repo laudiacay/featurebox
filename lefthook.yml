@@ -1,0 +1,20 @@
+# Lefthook config - runs same checks as CI
+
+pre-commit:
+  parallel: true
+  commands:
+    ruff-check:
+      glob: "*.py"
+      run: uv run ruff check src tests
+    ruff-format:
+      glob: "*.py"
+      run: uv run ruff format --check src tests
+    pyright:
+      glob: "*.py"
+      run: uv run pyright src
+
+pre-push:
+  parallel: true
+  commands:
+    tests:
+      run: uv run pytest tests -v

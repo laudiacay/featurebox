@@ -69,7 +69,7 @@ jobs:
             include Language::Python::Virtualenv
 
             desc "Git worktree workflow manager for feature development"
-            homepage "https://github.com/laudiacay/featurebox"
+            homepage "https://github.com/laudiacay/fwts"
           FORMULA
 
           cat >> Formula/fwts.rb << EOF

@@ -60,16 +60,15 @@ def detect_git_info(path: Path) -> dict[str, str | None]:
 
     # Get GitHub remote
     remote_url = run_git(["remote", "get-url", "origin"], cwd=path)
-    if remote_url:
+    if remote_url and "github.com" in remote_url:
         # Parse GitHub URL: git@github.com:user/repo.git or https://github.com/user/repo.git
-        if "github.com" in remote_url:
-            if remote_url.startswith("git@"):
-                # git@github.com:user/repo.git
-                parts = remote_url.split(":")[-1]
-            else:
-                # https://github.com/user/repo.git
-                parts = "/".join(remote_url.split("/")[-2:])
-            info["github_repo"] = parts.replace(".git", "")
+        if remote_url.startswith("git@"):
+            # git@github.com:user/repo.git
+            parts = remote_url.split(":")[-1]
+        else:
+            # https://github.com/user/repo.git
+            parts = "/".join(remote_url.split("/")[-2:])
+        info["github_repo"] = parts.replace(".git", "")
 
     return info
 
@@ -79,8 +78,7 @@ def interactive_setup(path: Path, is_global: bool = False) -> str:
     console.print()
     console.print(
         Panel.fit(
-            "[bold cyan]fwts Setup[/bold cyan]\n"
-            "[dim]Git worktree workflow manager[/dim]",
+            "[bold cyan]fwts Setup[/bold cyan]\n[dim]Git worktree workflow manager[/dim]",
             border_style="cyan",
         )
     )
@@ -106,7 +104,10 @@ def _project_setup(path: Path) -> str:
     name = Prompt.ask("Project name", default=default_name)
 
     # Main repo path
-    default_repo = f"~/{path.relative_to(Path.home())}" if path.is_relative_to(Path.home()) else str(path)
+    if path.is_relative_to(Path.home()):
+        default_repo = f"~/{path.relative_to(Path.home())}"
+    else:
+        default_repo = str(path)
     main_repo = Prompt.ask("Main repo path", default=default_repo)
 
     # Worktree base
@@ -240,13 +241,15 @@ def _global_setup() -> str:
         base_branch = Prompt.ask("Base branch", default="main")
         github_repo = Prompt.ask("GitHub repo", default=f"username/{name}")
 
-        projects.append({
-            "name": name,
-            "main_repo": main_repo,
-            "worktree_base": worktree_base,
-            "base_branch": base_branch,
-            "github_repo": github_repo,
-        })
+        projects.append(
+            {
+                "name": name,
+                "main_repo": main_repo,
+                "worktree_base": worktree_base,
+                "base_branch": base_branch,
+                "github_repo": github_repo,
+            }
+        )
 
         console.print(f"[green]Added {name}[/green]")
         console.print()

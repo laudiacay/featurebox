@@ -132,7 +132,7 @@ def get_builtin_hooks() -> list[ColumnHook]:
             name="Local",
             # Check for unpushed commits or uncommitted changes
             # Output: "↑N" (unpushed), "synced", "∗N" (uncommitted, no upstream), "clean"
-            hook='''
+            hook="""
                 upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null)
                 if [ -z "$upstream" ]; then
                     # No upstream - show uncommitted changes count
@@ -150,7 +150,7 @@ def get_builtin_hooks() -> list[ColumnHook]:
                 else
                     echo "↑$count"
                 fi
-            ''',
+            """,
             color_map={
                 "synced": "dim",
                 "clean": "dim",
@@ -162,7 +162,7 @@ def get_builtin_hooks() -> list[ColumnHook]:
             name="Merge",
             # Check PR merge status with detailed blocking reasons
             # Output: "ready", "conflict", "blocked: <reason>", "draft", "no PR"
-            hook='''
+            hook="""
                 pr_data=$(gh pr view "$BRANCH_NAME" --json mergeable,mergeStateStatus,isDraft,statusCheckRollup,reviewDecision 2>/dev/null)
                 if [ -z "$pr_data" ]; then
                     echo "no PR"
@@ -204,7 +204,7 @@ def get_builtin_hooks() -> list[ColumnHook]:
                 else
                     echo "unknown"
                 fi
-            ''',
+            """,
             color_map={
                 "ready": "green",
                 "conflict": "red",
@@ -218,7 +218,7 @@ def get_builtin_hooks() -> list[ColumnHook]:
             name="CI",
             # Check PR required checks status, fall back to workflow runs
             # Output: "pass", "fail", "req-fail" (required failed), "pending", "none"
-            hook='''
+            hook="""
                 pr_checks=$(gh pr checks "$BRANCH_NAME" --json name,state,required 2>/dev/null)
                 if [ -n "$pr_checks" ] && [ "$pr_checks" != "[]" ]; then
                     req_fail=$(echo "$pr_checks" | jq -r '[.[] | select(.required==true and .state=="FAILURE")] | length')
@@ -236,7 +236,7 @@ def get_builtin_hooks() -> list[ColumnHook]:
                 else
                     gh run list --branch "$BRANCH_NAME" --limit 1 --json conclusion,status -q 'if .[0].status != "completed" then "pending" else (.[0].conclusion // "none") end' 2>/dev/null || echo "none"
                 fi
-            ''',
+            """,
             color_map={
                 "pass": "green",
                 "pass*": "green",  # passed required, some optional failed
@@ -251,7 +251,7 @@ def get_builtin_hooks() -> list[ColumnHook]:
             name="Claude",
             # Check Claude status in tmux session
             # Output: "typing", "waiting", "idle", "off"
-            hook='''
+            hook=r"""
                 # Convert branch name to session name (replace / and . with -)
                 session=$(echo "$BRANCH_NAME" | sed 's/[\/.]/-/g')
 
@@ -291,7 +291,7 @@ def get_builtin_hooks() -> list[ColumnHook]:
                         echo "idle"
                     fi
                 fi
-            ''',
+            """,
             color_map={
                 "typing": "green",
                 "waiting": "yellow",

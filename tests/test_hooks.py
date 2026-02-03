@@ -130,7 +130,7 @@ def test_get_builtin_hooks():
     assert len(hooks) >= 2
     hook_names = [h.name for h in hooks]
     assert "CI" in hook_names
-    assert "PR" in hook_names
+    assert "Local" in hook_names
 
 
 def test_builtin_hooks_have_color_maps():

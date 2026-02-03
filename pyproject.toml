@@ -50,9 +50,9 @@ fwts = "fwts.cli:app"
 fb = "fwts.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/laudiacay/featurebox"
-Repository = "https://github.com/laudiacay/featurebox"
-Issues = "https://github.com/laudiacay/featurebox/issues"
+Homepage = "https://github.com/laudiacay/fwts"
+Repository = "https://github.com/laudiacay/fwts"
+Issues = "https://github.com/laudiacay/fwts/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fwts"]

@@ -248,11 +248,7 @@ def has_uncommitted_changes(cwd: Path | None = None) -> bool:
     # Check for untracked files
     untracked = run_git(["ls-files", "--others", "--exclude-standard"], cwd=cwd, check=False)
 
-    return (
-        staged.returncode != 0
-        or unstaged.returncode != 0
-        or bool(untracked.stdout.strip())
-    )
+    return staged.returncode != 0 or unstaged.returncode != 0 or bool(untracked.stdout.strip())
 
 
 def get_worktree_diff(cwd: Path | None = None, max_lines: int = 50) -> str:

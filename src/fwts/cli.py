@@ -17,7 +17,6 @@ from fwts.config import (
     list_projects,
     load_config,
 )
-from fwts.setup import interactive_setup
 from fwts.focus import (
     focus_worktree,
     get_focus_state,
@@ -29,8 +28,9 @@ from fwts.github import get_branch_from_pr, has_gh_cli
 from fwts.lifecycle import full_cleanup, full_setup, get_worktree_for_input
 from fwts.linear import get_branch_from_ticket
 from fwts.paths import ensure_config_dir, get_global_config_path
+from fwts.setup import interactive_setup
 from fwts.tmux import attach_session, session_exists, session_name_from_branch
-from fwts.tui import FeatureboxTUI, TicketInfo, TUIMode, simple_list
+from fwts.tui import FwtsTUI, TicketInfo, TUIMode, simple_list
 
 app = typer.Typer(
     name="fwts",
@@ -166,7 +166,7 @@ def start(
 
     if not input:
         # Interactive mode - show TUI and let user pick
-        tui = FeatureboxTUI(config)
+        tui = FwtsTUI(config)
         tui.set_cleanup_func(full_cleanup)  # Enable inline cleanup
         action, selected = tui.run()
 
@@ -242,7 +242,7 @@ def cleanup(
 
     if not input:
         # Interactive mode
-        tui = FeatureboxTUI(config)
+        tui = FwtsTUI(config)
         action, selected = tui.run()
 
         if action == "cleanup" and selected and isinstance(selected, list):
@@ -282,7 +282,7 @@ def status(
     """
     config = _get_config(project, config_path)
 
-    tui = FeatureboxTUI(config)
+    tui = FwtsTUI(config)
     tui.set_cleanup_func(full_cleanup)  # Enable inline cleanup
     action, result = tui.run()
 
@@ -388,7 +388,6 @@ def statusline(
 
     Use --obvious for human-readable output instead of symbols.
     """
-    import os
     cwd = (directory or Path.cwd()).resolve()
 
     try:
@@ -431,9 +430,7 @@ def statusline(
 
     def git_cmd(args: list[str]) -> str:
         try:
-            result = subprocess.run(
-                ["git"] + args, capture_output=True, text=True, cwd=cwd
-            )
+            result = subprocess.run(["git"] + args, capture_output=True, text=True, cwd=cwd)
             return result.stdout.strip() if result.returncode == 0 else ""
         except Exception:
             return ""
@@ -442,9 +439,9 @@ def statusline(
 
     # Git status indicators
     status = git_cmd(["status", "--porcelain"])
-    staged = sum(1 for l in status.splitlines() if l and l[0] in "MADRC")
-    unstaged = sum(1 for l in status.splitlines() if l and len(l) > 1 and l[1] in "MADRC")
-    untracked = sum(1 for l in status.splitlines() if l.startswith("??"))
+    staged = sum(1 for ln in status.splitlines() if ln and ln[0] in "MADRC")
+    unstaged = sum(1 for ln in status.splitlines() if ln and len(ln) > 1 and ln[1] in "MADRC")
+    untracked = sum(1 for ln in status.splitlines() if ln.startswith("??"))
 
     # Ahead/behind
     ahead_behind = git_cmd(["rev-list", "--left-right", "--count", "@{u}...HEAD"])
@@ -458,10 +455,13 @@ def statusline(
     insertions = deletions = 0
     if diff_stat:
         import re
+
         ins = re.search(r"(\d+) insertion", diff_stat)
         dels = re.search(r"(\d+) deletion", diff_stat)
-        if ins: insertions = int(ins.group(1))
-        if dels: deletions = int(dels.group(1))
+        if ins:
+            insertions = int(ins.group(1))
+        if dels:
+            deletions = int(dels.group(1))
 
     parts = []
 
@@ -477,9 +477,12 @@ def statusline(
         # Human-readable format
         if staged or unstaged or untracked:
             status_desc = []
-            if staged: status_desc.append(f"{staged} staged")
-            if unstaged: status_desc.append(f"{unstaged} modified")
-            if untracked: status_desc.append(f"{untracked} new")
+            if staged:
+                status_desc.append(f"{staged} staged")
+            if unstaged:
+                status_desc.append(f"{unstaged} modified")
+            if untracked:
+                status_desc.append(f"{untracked} new")
             parts.append(f"({', '.join(status_desc)})")
 
         if ahead or behind:
@@ -502,16 +505,21 @@ def statusline(
     else:
         # Compact symbol format
         status_parts = []
-        if staged: status_parts.append(f"+{staged}")
-        if unstaged: status_parts.append(f"~{unstaged}")
-        if untracked: status_parts.append(f"?{untracked}")
+        if staged:
+            status_parts.append(f"+{staged}")
+        if unstaged:
+            status_parts.append(f"~{unstaged}")
+        if untracked:
+            status_parts.append(f"?{untracked}")
         if status_parts:
             parts.append("".join(status_parts))
 
         if ahead or behind:
             ab = ""
-            if ahead: ab += f"↑{ahead}"
-            if behind: ab += f"↓{behind}"
+            if ahead:
+                ab += f"↑{ahead}"
+            if behind:
+                ab += f"↓{behind}"
             parts.append(ab)
 
         if insertions or deletions:
@@ -692,7 +700,7 @@ def tickets(
         console.print("Valid modes: mine, review, all")
         raise typer.Exit(1)
 
-    tui = FeatureboxTUI(config, initial_mode=mode_map[mode])
+    tui = FwtsTUI(config, initial_mode=mode_map[mode])
     tui.set_cleanup_func(full_cleanup)  # Enable inline cleanup
     action, result = tui.run()
 

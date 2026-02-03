@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import subprocess
 import sys
+import termios
 import threading
 import time
 import webbrowser
@@ -29,6 +30,34 @@ from fwts.tmux import session_exists, session_name_from_branch
 
 console = Console()
 
+
+def save_terminal_state() -> list[Any] | None:
+    """Save current terminal state. Returns None if not a tty."""
+    try:
+        if sys.stdin.isatty():
+            return termios.tcgetattr(sys.stdin.fileno())
+    except Exception:
+        pass
+    return None
+
+
+def restore_terminal_state(state: list[Any] | None) -> None:
+    """Restore terminal state if we have a saved state."""
+    if state is not None:
+        with contextlib.suppress(Exception):
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, state)
+
+
+def reset_terminal() -> None:
+    """Reset terminal to sane defaults."""
+    try:
+        if sys.stdin.isatty():
+            # Reset to cooked mode with echo
+            subprocess.run(["stty", "sane"], check=False, capture_output=True)
+    except Exception:
+        pass
+
+
 # Auto-refresh interval in seconds
 AUTO_REFRESH_INTERVAL = 30
 
@@ -44,6 +73,48 @@ class TUIMode(Enum):
     TICKETS_MINE = "tickets_mine"
     TICKETS_REVIEW = "tickets_review"
     TICKETS_ALL = "tickets_all"
+
+
+@dataclass
+class TUIState:
+    """Encapsulates all mutable TUI state."""
+
+    # Navigation State
+    cursor: int = 0
+    selected: set[int] = field(default_factory=set)
+    viewport_start: int = 0
+    mode: TUIMode = TUIMode.WORKTREES
+    running: bool = True
+
+    # UI Feedback State
+    status_message: str | None = None
+    status_style: str = "dim"
+    needs_refresh: bool = True
+    loading: bool = False
+    last_refresh: float = 0.0
+
+    # Cached Data
+    worktrees: list[WorktreeInfo] = field(default_factory=list)
+    tickets: list[TicketInfo] = field(default_factory=list)
+
+    # Terminal State
+    last_terminal_size: tuple[int, int] = (0, 0)
+    resize_detected: bool = False
+
+    def set_status(self, message: str | None, style: str = "dim") -> None:
+        """Set status message."""
+        self.status_message = message
+        self.status_style = style
+
+    def clear_status(self) -> None:
+        """Clear status message."""
+        self.status_message = None
+
+    def reset_navigation(self) -> None:
+        """Reset navigation state (used when switching modes)."""
+        self.cursor = 0
+        self.viewport_start = 0
+        self.selected.clear()
 
 
 @dataclass
@@ -79,28 +150,15 @@ class TicketInfo:
     pr_info: PRInfo | None = None
 
 
-class FeatureboxTUI:
+class FwtsTUI:
     """Interactive TUI with multi-select table and mode switching."""
 
     def __init__(self, config: Config, initial_mode: TUIMode = TUIMode.WORKTREES):
         self.config = config
-        self.mode = initial_mode
-        self.worktrees: list[WorktreeInfo] = []
-        self.tickets: list[TicketInfo] = []
-        self.selected: set[int] = set()
-        self.cursor: int = 0
-        self.viewport_start: int = 0
-        self.running = True
-        self.needs_refresh = True
-        self.loading = False
-        self.status_message: str | None = None
-        self.status_style: str = "dim"
-        self.last_refresh: float = 0
+        self.state = TUIState(mode=initial_mode)
         self._refresh_lock = threading.Lock()
         self._pending_cleanup = False
-        self._cleanup_func: Callable[[Any, Config], None] | None = None
-        self._last_terminal_size: tuple[int, int] = (0, 0)
-        self._resize_detected: bool = False
+        self._cleanup_func: Callable[..., None] | None = None
 
     @property
     def viewport_size(self) -> int:
@@ -162,7 +220,7 @@ class FeatureboxTUI:
                     info.hook_data = hook_results[info.worktree.path]
 
         with self._refresh_lock:
-            self.worktrees = new_worktrees
+            self.state.worktrees = new_worktrees
 
     async def _load_ticket_data(self) -> None:
         """Load tickets from Linear based on current mode."""
@@ -176,22 +234,22 @@ class FeatureboxTUI:
         local_branches = {wt.branch.lower() for wt in local_worktrees}
 
         try:
-            if self.mode == TUIMode.TICKETS_MINE:
+            if self.state.mode == TUIMode.TICKETS_MINE:
                 raw_tickets = await list_my_tickets(api_key)
-            elif self.mode == TUIMode.TICKETS_REVIEW:
+            elif self.state.mode == TUIMode.TICKETS_REVIEW:
                 raw_tickets = await list_review_requests(api_key)
-            elif self.mode == TUIMode.TICKETS_ALL:
+            elif self.state.mode == TUIMode.TICKETS_ALL:
                 raw_tickets = await list_team_tickets(api_key)
             else:
                 raw_tickets = []
 
-            self.tickets = []
+            self.state.tickets = []
             for t in raw_tickets:
                 # Check if we have a local worktree for this ticket
                 # Match by ticket identifier in branch name
                 has_local = any(
-                    t.identifier.lower() in branch or
-                    (t.branch_name and t.branch_name.lower() == branch)
+                    t.identifier.lower() in branch
+                    or (t.branch_name and t.branch_name.lower() == branch)
                     for branch in local_branches
                 )
 
@@ -201,48 +259,50 @@ class FeatureboxTUI:
                     with contextlib.suppress(Exception):
                         pr_info = get_pr_by_branch(t.branch_name, github_repo)
 
-                self.tickets.append(TicketInfo(
-                    id=t.id,
-                    identifier=t.identifier,
-                    title=t.title,
-                    state=t.state,
-                    state_type=t.state_type,
-                    priority=t.priority,
-                    assignee=t.assignee,
-                    url=t.url,
-                    branch_name=t.branch_name,
-                    has_local_worktree=has_local,
-                    pr_info=pr_info,
-                ))
+                self.state.tickets.append(
+                    TicketInfo(
+                        id=t.id,
+                        identifier=t.identifier,
+                        title=t.title,
+                        state=t.state,
+                        state_type=t.state_type,
+                        priority=t.priority,
+                        assignee=t.assignee,
+                        url=t.url,
+                        branch_name=t.branch_name,
+                        has_local_worktree=has_local,
+                        pr_info=pr_info,
+                    )
+                )
         except Exception as e:
-            self.status_message = f"Failed to load tickets: {e}"
-            self.status_style = "red"
-            self.tickets = []
+            self.state.status_message = f"Failed to load tickets: {e}"
+            self.state.status_style = "red"
+            self.state.tickets = []
 
     async def _load_data(self) -> None:
         """Load data based on current mode."""
         with self._refresh_lock:
-            self.loading = True
-            self.status_message = "Refreshing..."
-            self.status_style = "yellow"
+            self.state.loading = True
+            self.state.status_message = "Refreshing..."
+            self.state.status_style = "yellow"
 
-        if self.mode == TUIMode.WORKTREES:
+        if self.state.mode == TUIMode.WORKTREES:
             await self._load_worktree_data()
         else:
             await self._load_ticket_data()
 
         with self._refresh_lock:
-            self.loading = False
-            self.needs_refresh = False
-            self.last_refresh = time.time()
-            if not self.status_message or self.status_message == "Refreshing...":
-                self.status_message = None
+            self.state.loading = False
+            self.state.needs_refresh = False
+            self.state.last_refresh = time.time()
+            if not self.state.status_message or self.state.status_message == "Refreshing...":
+                self.state.status_message = None
 
     def _get_current_items(self) -> list:
         """Get current list of items based on mode."""
-        if self.mode == TUIMode.WORKTREES:
-            return self.worktrees
-        return self.tickets
+        if self.state.mode == TUIMode.WORKTREES:
+            return self.state.worktrees
+        return self.state.tickets
 
     def _render_worktree_table(self) -> Table:
         """Render the worktree table."""
@@ -252,9 +312,11 @@ class FeatureboxTUI:
 
         # Add scroll indicator to title if there are more items than viewport
         scroll_info = ""
-        if len(self.worktrees) > self.viewport_size:
-            viewport_end = min(self.viewport_start + self.viewport_size, len(self.worktrees))
-            scroll_info = f" [dim](showing {self.viewport_start + 1}-{viewport_end} of {len(self.worktrees)})[/dim]"
+        if len(self.state.worktrees) > self.viewport_size:
+            viewport_end = min(
+                self.state.viewport_start + self.viewport_size, len(self.state.worktrees)
+            )
+            scroll_info = f" [dim](showing {self.state.viewport_start + 1}-{viewport_end} of {len(self.state.worktrees)})[/dim]"
 
         table = Table(
             title=f"[bold]{project_name}[/bold]{focus_info} [dim](worktrees)[/dim]{scroll_info}",
@@ -287,25 +349,27 @@ class FeatureboxTUI:
         table.add_column("PR", width=20)
 
         # Show loading state or empty state
-        if not self.worktrees:
+        if not self.state.worktrees:
             # Calculate number of columns for proper rendering
             num_hook_cols = len(hooks)
             empty_cols = [""] * (2 + num_hook_cols)  # tmux, hooks, PR
-            if self.loading:
+            if self.state.loading:
                 table.add_row("", "[yellow]⟳ Loading worktrees...[/yellow]", *empty_cols)
             else:
                 table.add_row("", "[dim]No feature worktrees found[/dim]", *empty_cols)
             return table
 
         # Calculate viewport range
-        viewport_end = min(self.viewport_start + self.viewport_size, len(self.worktrees))
+        viewport_end = min(
+            self.state.viewport_start + self.viewport_size, len(self.state.worktrees)
+        )
 
-        for idx in range(self.viewport_start, viewport_end):
-            info = self.worktrees[idx]
+        for idx in range(self.state.viewport_start, viewport_end):
+            info = self.state.worktrees[idx]
 
             # Cursor and selection
-            cursor_char = ">" if idx == self.cursor else " "
-            selected = "✓" if idx in self.selected else " "
+            cursor_char = ">" if idx == self.state.cursor else " "
+            selected = "✓" if idx in self.state.selected else " "
             prefix = f"{cursor_char}{selected}"
 
             # Branch name (truncate if too long)
@@ -332,7 +396,7 @@ class FeatureboxTUI:
             pr_display = self._format_pr_display(info.pr_info)
 
             # Highlight row if at cursor
-            style = "reverse" if idx == self.cursor else None
+            style = "reverse" if idx == self.state.cursor else None
 
             table.add_row(prefix, branch, session, *hook_values, pr_display, style=style)
 
@@ -378,13 +442,15 @@ class FeatureboxTUI:
             TUIMode.TICKETS_REVIEW: "review requests",
             TUIMode.TICKETS_ALL: "all tickets",
         }
-        mode_name = mode_names.get(self.mode, "tickets")
+        mode_name = mode_names.get(self.state.mode, "tickets")
 
         # Add scroll indicator to title if there are more items than viewport
         scroll_info = ""
-        if len(self.tickets) > self.viewport_size:
-            viewport_end = min(self.viewport_start + self.viewport_size, len(self.tickets))
-            scroll_info = f" [dim](showing {self.viewport_start + 1}-{viewport_end} of {len(self.tickets)})[/dim]"
+        if len(self.state.tickets) > self.viewport_size:
+            viewport_end = min(
+                self.state.viewport_start + self.viewport_size, len(self.state.tickets)
+            )
+            scroll_info = f" [dim](showing {self.state.viewport_start + 1}-{viewport_end} of {len(self.state.tickets)})[/dim]"
 
         table = Table(
             title=f"[bold]Linear Tickets[/bold] [dim]({mode_name})[/dim]{scroll_info}",
@@ -402,20 +468,20 @@ class FeatureboxTUI:
         table.add_column("PR", width=16)  # PR status
 
         # Show loading state or empty state
-        if not self.tickets:
+        if not self.state.tickets:
             # Show loading if actively loading OR if we just switched modes and need refresh
-            if self.loading or self.needs_refresh:
+            if self.state.loading or self.state.needs_refresh:
                 table.add_row("", "", "[yellow]⟳ Loading tickets...[/yellow]", "", "", "")
             else:
                 table.add_row("", "", "[dim]No tickets found[/dim]", "", "", "")
             return table
 
         # Calculate viewport range
-        viewport_end = min(self.viewport_start + self.viewport_size, len(self.tickets))
+        viewport_end = min(self.state.viewport_start + self.viewport_size, len(self.state.tickets))
 
-        for idx in range(self.viewport_start, viewport_end):
-            ticket = self.tickets[idx]
-            prefix = ">" if idx == self.cursor else " "
+        for idx in range(self.state.viewport_start, viewport_end):
+            ticket = self.state.tickets[idx]
+            prefix = ">" if idx == self.state.cursor else " "
 
             # Color state based on type
             state_style = {
@@ -440,14 +506,16 @@ class FeatureboxTUI:
             if len(title) > 40:
                 title = title[:37] + "..."
 
-            style = "reverse" if idx == self.cursor else None
-            table.add_row(prefix, ticket.identifier, title, state_text, local, pr_display, style=style)
+            style = "reverse" if idx == self.state.cursor else None
+            table.add_row(
+                prefix, ticket.identifier, title, state_text, local, pr_display, style=style
+            )
 
         return table
 
     def _render_table(self) -> Table:
         """Render table based on current mode."""
-        if self.mode == TUIMode.WORKTREES:
+        if self.state.mode == TUIMode.WORKTREES:
             return self._render_worktree_table()
         return self._render_ticket_table()
 
@@ -459,7 +527,7 @@ class FeatureboxTUI:
         help_text.append("k/↑", style="bold")
         help_text.append(" up  ")
 
-        if self.mode == TUIMode.WORKTREES:
+        if self.state.mode == TUIMode.WORKTREES:
             help_text.append("space", style="bold")
             help_text.append(" select  ")
             help_text.append("a", style="bold")
@@ -505,14 +573,14 @@ class FeatureboxTUI:
         """Render status line."""
         status = Text()
 
-        if self.loading:
+        if self.state.loading:
             # Always show loading state prominently
             status.append("⟳ Loading data...", style="bold yellow")
-        elif self.status_message:
-            status.append(self.status_message, style=self.status_style)
+        elif self.state.status_message:
+            status.append(self.state.status_message, style=self.state.status_style)
         else:
             # Show time since last refresh
-            elapsed = int(time.time() - self.last_refresh)
+            elapsed = int(time.time() - self.state.last_refresh)
             if elapsed < 60:
                 status.append(f"Updated {elapsed}s ago", style="dim")
             else:
@@ -549,12 +617,12 @@ class FeatureboxTUI:
             open_pr: If True and item has a PR, open PR instead of ticket
         """
         items = self._get_current_items()
-        if not items or self.cursor >= len(items):
+        if not items or self.state.cursor >= len(items):
             return
 
-        item = items[self.cursor]
+        item = items[self.state.cursor]
 
-        if self.mode == TUIMode.WORKTREES:
+        if self.state.mode == TUIMode.WORKTREES:
             # Open PR URL or create one
             if isinstance(item, WorktreeInfo):
                 if item.pr_url and item.pr_info:
@@ -563,7 +631,7 @@ class FeatureboxTUI:
                         subprocess.Popen(
                             ["open", item.pr_url],
                             stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL
+                            stderr=subprocess.DEVNULL,
                         )
                         self.set_status(f"Opened PR #{item.pr_info.number}", "green")
                     except Exception:
@@ -575,7 +643,7 @@ class FeatureboxTUI:
                             ["gh", "pr", "create", "--web"],
                             cwd=item.worktree.path,
                             stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL
+                            stderr=subprocess.DEVNULL,
                         )
                         self.set_status("Opening PR creation page...", "yellow")
                     except Exception as e:
@@ -592,9 +660,7 @@ class FeatureboxTUI:
                     label = item.identifier
                 try:
                     subprocess.Popen(
-                        ["open", url],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
+                        ["open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                     )
                     self.set_status(f"Opened {label}", "green")
                 except Exception:
@@ -602,17 +668,22 @@ class FeatureboxTUI:
 
     def _switch_mode(self, new_mode: TUIMode) -> None:
         """Switch to a new mode."""
-        if new_mode != self.mode:
-            self.mode = new_mode
-            self.cursor = 0
-            self.viewport_start = 0
-            self.selected.clear()
-            self.needs_refresh = True
+        if new_mode != self.state.mode:
+            self.state.mode = new_mode
+            self.state.cursor = 0
+            self.state.viewport_start = 0
+            self.state.selected.clear()
+            self.state.needs_refresh = True
 
     def _cycle_mode(self) -> None:
         """Cycle through modes."""
-        modes = [TUIMode.WORKTREES, TUIMode.TICKETS_MINE, TUIMode.TICKETS_REVIEW, TUIMode.TICKETS_ALL]
-        current_idx = modes.index(self.mode)
+        modes = [
+            TUIMode.WORKTREES,
+            TUIMode.TICKETS_MINE,
+            TUIMode.TICKETS_REVIEW,
+            TUIMode.TICKETS_ALL,
+        ]
+        current_idx = modes.index(self.state.mode)
         next_idx = (current_idx + 1) % len(modes)
         self._switch_mode(modes[next_idx])
 
@@ -624,7 +695,7 @@ class FeatureboxTUI:
         items = self._get_current_items()
 
         if key in ("q", "Q"):
-            self.running = False
+            self.state.running = False
             return None
 
         # Mode switching
@@ -646,15 +717,15 @@ class FeatureboxTUI:
 
         # Navigation
         if key in ("j", KEY_DOWN):
-            self.cursor = min(self.cursor + 1, len(items) - 1) if items else 0
+            self.state.cursor = min(self.state.cursor + 1, len(items) - 1) if items else 0
             # Scroll down if cursor moves below viewport
-            if self.cursor >= self.viewport_start + self.viewport_size:
-                self.viewport_start = self.cursor - self.viewport_size + 1
+            if self.state.cursor >= self.state.viewport_start + self.viewport_size:
+                self.state.viewport_start = self.state.cursor - self.viewport_size + 1
         elif key in ("k", KEY_UP):
-            self.cursor = max(self.cursor - 1, 0)
+            self.state.cursor = max(self.state.cursor - 1, 0)
             # Scroll up if cursor moves above viewport
-            if self.cursor < self.viewport_start:
-                self.viewport_start = self.cursor
+            if self.state.cursor < self.state.viewport_start:
+                self.state.viewport_start = self.state.cursor
 
         # Open URL
         elif key in ("o", "O"):
@@ -664,20 +735,20 @@ class FeatureboxTUI:
 
         # Refresh
         elif key in ("r", "R"):
-            self.needs_refresh = True
+            self.state.needs_refresh = True
 
         # Mode-specific actions
-        elif self.mode == TUIMode.WORKTREES:
+        elif self.state.mode == TUIMode.WORKTREES:
             if key == " ":
-                if self.cursor in self.selected:
-                    self.selected.discard(self.cursor)
+                if self.state.cursor in self.state.selected:
+                    self.state.selected.discard(self.state.cursor)
                 else:
-                    self.selected.add(self.cursor)
+                    self.state.selected.add(self.state.cursor)
             elif key in ("a", "A"):
-                if len(self.selected) == len(self.worktrees):
-                    self.selected.clear()
+                if len(self.state.selected) == len(self.state.worktrees):
+                    self.state.selected.clear()
                 else:
-                    self.selected = set(range(len(self.worktrees)))
+                    self.state.selected = set(range(len(self.state.worktrees)))
             elif key in ("\r", "\n"):
                 return "launch"
             elif key in ("d", "D"):
@@ -698,31 +769,55 @@ class FeatureboxTUI:
 
     def get_selected_worktrees(self) -> list[WorktreeInfo]:
         """Get currently selected worktrees."""
-        if not self.selected:
+        if not self.state.selected:
             # If nothing selected, return current cursor position
-            if 0 <= self.cursor < len(self.worktrees):
-                return [self.worktrees[self.cursor]]
+            if 0 <= self.state.cursor < len(self.state.worktrees):
+                return [self.state.worktrees[self.state.cursor]]
             return []
-        return [self.worktrees[i] for i in sorted(self.selected)]
+        return [self.state.worktrees[i] for i in sorted(self.state.selected)]
 
     def get_selected_ticket(self) -> TicketInfo | None:
         """Get currently selected ticket."""
-        if 0 <= self.cursor < len(self.tickets):
-            return self.tickets[self.cursor]
+        if 0 <= self.state.cursor < len(self.state.tickets):
+            return self.state.tickets[self.state.cursor]
         return None
 
     def set_status(self, message: str, style: str = "dim") -> None:
         """Set status message."""
-        self.status_message = message
-        self.status_style = style
+        self.state.status_message = message
+        self.state.status_style = style
 
     def clear_status(self) -> None:
         """Clear status message."""
-        self.status_message = None
+        self.state.status_message = None
 
-    def set_cleanup_func(self, func: Callable[[Any, Config], None]) -> None:
+    def set_cleanup_func(self, func: Callable[..., None]) -> None:
         """Set the cleanup function to use for inline cleanup."""
         self._cleanup_func = func
+
+    def _run_cleanup_in_thread(self, worktree: Any, force: bool, result: dict[str, Any]) -> None:
+        """Run cleanup in a background thread with suppressed output."""
+        from io import StringIO
+
+        # Suppress output in the cleanup thread to avoid terminal conflicts
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        devnull = StringIO()
+
+        try:
+            sys.stdout = devnull
+            sys.stderr = devnull
+            if self._cleanup_func:
+                self._cleanup_func(worktree, self.config, force=force)
+            result["success"] = True
+            result["error"] = None
+        except Exception as e:
+            result["success"] = False
+            result["error"] = e
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+        result["done"] = True
 
     def _run_inline_cleanup(self, live: Live) -> None:
         """Run cleanup inline within the TUI, then refresh."""
@@ -735,114 +830,118 @@ class FeatureboxTUI:
             self.set_status("No worktrees selected", "yellow")
             return
 
-        # Import here to avoid circular dependency
-        from io import StringIO
-
         from fwts.git import get_worktree_diff, has_uncommitted_changes
+
+        spinner_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
         for i, info in enumerate(worktrees):
             branch = info.worktree.branch
             worktree_path = info.worktree.path
 
-            # First try without force
+            # Show initial status
             self.set_status(
-                f"Checking [{i + 1}/{len(worktrees)}]: {branch}...",
+                f"Cleaning [{i + 1}/{len(worktrees)}]: {branch}...",
                 style="yellow",
             )
             live.update(self._render(), refresh=True)
 
-            # Capture console output
-            old_stdout = sys.stdout
-            old_stderr = sys.stderr
-            captured_output = StringIO()
+            # Run cleanup in background thread
+            result: dict[str, Any] = {"done": False, "success": False, "error": None}
+            cleanup_thread = threading.Thread(
+                target=self._run_cleanup_in_thread,
+                args=(info.worktree, False, result),
+                daemon=True,
+            )
+            cleanup_thread.start()
 
-            try:
-                # Redirect console output
-                sys.stdout = captured_output
-                sys.stderr = captured_output
-                console._file = captured_output
+            # Poll for completion while updating spinner
+            spinner_idx = 0
+            while not result["done"]:
+                spinner = spinner_chars[spinner_idx % len(spinner_chars)]
+                self.set_status(
+                    f"{spinner} Cleaning [{i + 1}/{len(worktrees)}]: {branch}...",
+                    style="yellow",
+                )
+                live.update(self._render(), refresh=True)
+                spinner_idx += 1
+                time.sleep(0.1)
 
-                # Try cleanup without force first
-                try:
-                    self._cleanup_func(info.worktree, self.config, force=False)
-                    # Restore output
-                    sys.stdout = old_stdout
-                    sys.stderr = old_stderr
-                    console._file = old_stdout
-                    self.set_status(f"✓ Cleaned up: {branch}", style="green")
+            # Check result
+            if result["success"]:
+                self.set_status(f"✓ Cleaned up: {branch}", style="green")
+                live.update(self._render(), refresh=True)
+                time.sleep(0.3)
+                continue
+
+            # Cleanup failed - check if due to uncommitted changes
+            e = result["error"]
+            if has_uncommitted_changes(worktree_path):
+                self.set_status(
+                    f"⚠ {branch} has uncommitted changes - press 'f' to force, any other key to skip",
+                    style="yellow",
+                )
+
+                # Get diff for display
+                diff = get_worktree_diff(worktree_path, max_lines=20)
+
+                # Show diff in status area
+                prev_status = self.state.status_message
+                self.state.status_message = f"Uncommitted changes in {branch}:\n{diff}\n\nPress 'f' to force cleanup, any other key to skip"
+                live.update(self._render(), refresh=True)
+
+                # Wait for user input
+                key = self._get_key_with_timeout(timeout=30.0)
+
+                # Restore previous status
+                self.state.status_message = prev_status
+
+                if key == "f":
+                    # User confirmed force cleanup - run in thread
+                    self.set_status(
+                        f"Force cleaning [{i + 1}/{len(worktrees)}]: {branch}...",
+                        style="yellow",
+                    )
                     live.update(self._render(), refresh=True)
-                    time.sleep(0.3)
-                    continue
-                except Exception as e:
-                    # Restore output
-                    sys.stdout = old_stdout
-                    sys.stderr = old_stderr
-                    console._file = old_stdout
 
-                    # Check if failure was due to uncommitted changes
-                    if has_uncommitted_changes(worktree_path):
+                    # Run force cleanup in background thread
+                    force_result: dict[str, Any] = {"done": False, "success": False, "error": None}
+                    force_thread = threading.Thread(
+                        target=self._run_cleanup_in_thread,
+                        args=(info.worktree, True, force_result),
+                        daemon=True,
+                    )
+                    force_thread.start()
+
+                    # Poll for completion
+                    spinner_idx = 0
+                    while not force_result["done"]:
+                        spinner = spinner_chars[spinner_idx % len(spinner_chars)]
                         self.set_status(
-                            f"⚠ {branch} has uncommitted changes - press 'f' to force, any other key to skip",
+                            f"{spinner} Force cleaning [{i + 1}/{len(worktrees)}]: {branch}...",
                             style="yellow",
                         )
-
-                        # Get diff for display
-                        diff = get_worktree_diff(worktree_path, max_lines=20)
-
-                        # Show diff in status area
-                        prev_status = self.status_message
-                        self.status_message = f"Uncommitted changes in {branch}:\n{diff}\n\nPress 'f' to force cleanup, any other key to skip"
                         live.update(self._render(), refresh=True)
+                        spinner_idx += 1
+                        time.sleep(0.1)
 
-                        # Wait for user input
-                        key = self._get_key_with_timeout(timeout=30.0)
-
-                        # Restore previous status
-                        self.status_message = prev_status
-
-                        if key == "f":
-                            # User confirmed force cleanup
-                            self.set_status(
-                                f"Force cleaning [{i + 1}/{len(worktrees)}]: {branch}...",
-                                style="yellow",
-                            )
-                            live.update(self._render(), refresh=True)
-
-                            # Capture output again for force cleanup
-                            captured_output = StringIO()
-                            sys.stdout = captured_output
-                            sys.stderr = captured_output
-                            console._file = captured_output
-
-                            try:
-                                self._cleanup_func(info.worktree, self.config, force=True)
-                                sys.stdout = old_stdout
-                                sys.stderr = old_stderr
-                                console._file = old_stdout
-                                self.set_status(f"✓ Force cleaned: {branch}", style="green")
-                            except Exception as force_e:
-                                sys.stdout = old_stdout
-                                sys.stderr = old_stderr
-                                console._file = old_stdout
-                                self.set_status(f"✗ Failed: {branch} - {force_e}", style="red")
-                        else:
-                            # User skipped
-                            self.set_status(f"⊘ Skipped: {branch}", style="dim")
+                    if force_result["success"]:
+                        self.set_status(f"✓ Force cleaned: {branch}", style="green")
                     else:
-                        # Other error, not uncommitted changes
-                        self.set_status(f"✗ Failed: {branch} - {e}", style="red")
-
-            finally:
-                # Ensure output is always restored
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-                console._file = old_stdout
+                        self.set_status(
+                            f"✗ Failed: {branch} - {force_result['error']}", style="red"
+                        )
+                else:
+                    # User skipped
+                    self.set_status(f"⊘ Skipped: {branch}", style="dim")
+            else:
+                # Other error, not uncommitted changes
+                self.set_status(f"✗ Failed: {branch} - {e}", style="red")
 
             live.update(self._render(), refresh=True)
             time.sleep(0.3)
 
         # Clear selection and refresh data
-        self.selected.clear()
+        self.state.selected.clear()
         self.set_status("Cleanup complete - refreshing...", style="green")
         live.update(self._render(), refresh=True)
 
@@ -850,22 +949,22 @@ class FeatureboxTUI:
         asyncio.run(self._load_data())
 
         # Reset cursor/viewport to safe positions after list may have shrunk
-        max_cursor = max(0, len(self.worktrees) - 1)
-        self.cursor = min(self.cursor, max_cursor)
-        self.viewport_start = 0
+        max_cursor = max(0, len(self.state.worktrees) - 1)
+        self.state.cursor = min(self.state.cursor, max_cursor)
+        self.state.viewport_start = 0
 
         self.clear_status()
         live.update(self._render(), refresh=True)
 
     def _show_unpushed_commits(self) -> None:
         """Show unpushed commits for the selected worktree."""
-        if not self.worktrees or self.cursor >= len(self.worktrees):
+        if not self.state.worktrees or self.state.cursor >= len(self.state.worktrees):
             self.set_status("No worktree selected", "yellow")
             return
 
         from fwts.git import get_unpushed_commits
 
-        info = self.worktrees[self.cursor]
+        info = self.state.worktrees[self.state.cursor]
         count, summary = get_unpushed_commits(cwd=info.worktree.path)
 
         if count == 0:
@@ -893,6 +992,7 @@ class FeatureboxTUI:
         Uses signal-based timeout with readchar to avoid terminal mode conflicts.
         """
         import signal
+
         import readchar  # type: ignore[import-not-found]
 
         def timeout_handler(signum, frame):
@@ -920,17 +1020,17 @@ class FeatureboxTUI:
             return
 
         # Clamp cursor to valid range
-        self.cursor = min(self.cursor, len(items) - 1)
+        self.state.cursor = min(self.state.cursor, len(items) - 1)
 
         # Clamp viewport_start to valid range
         max_start = max(0, len(items) - self.viewport_size)
-        self.viewport_start = min(self.viewport_start, max_start)
+        self.state.viewport_start = min(self.state.viewport_start, max_start)
 
         # Ensure cursor is visible in viewport
-        if self.cursor < self.viewport_start:
-            self.viewport_start = self.cursor
-        elif self.cursor >= self.viewport_start + self.viewport_size:
-            self.viewport_start = self.cursor - self.viewport_size + 1
+        if self.state.cursor < self.state.viewport_start:
+            self.state.viewport_start = self.state.cursor
+        elif self.state.cursor >= self.state.viewport_start + self.viewport_size:
+            self.state.viewport_start = self.state.cursor - self.viewport_size + 1
 
     def run(self) -> tuple[str | None, list[WorktreeInfo] | TicketInfo | None]:
         """Run the TUI.
@@ -960,11 +1060,14 @@ class FeatureboxTUI:
         action = None
         result_data = None
 
+        # Save terminal state to restore on exit
+        saved_terminal_state = save_terminal_state()
+
         # Install SIGWINCH handler for terminal resize detection
         import signal
 
         def sigwinch_handler(signum, frame):
-            self._resize_detected = True
+            self.state.resize_detected = True
 
         old_handler = None
         if hasattr(signal, "SIGWINCH"):
@@ -972,22 +1075,24 @@ class FeatureboxTUI:
 
         try:
             with Live(self._render(), auto_refresh=False, console=console) as live:
-                while self.running:
+                while self.state.running:
                     # Get current items list based on mode
                     items = (
-                        self.worktrees if self.mode == TUIMode.WORKTREES else self.tickets
+                        self.state.worktrees
+                        if self.state.mode == TUIMode.WORKTREES
+                        else self.state.tickets
                     )
 
                     # Check for terminal resize
                     current_size = (console.width, console.height)
-                    if self._resize_detected or current_size != self._last_terminal_size:
-                        self._resize_detected = False
-                        self._last_terminal_size = current_size
+                    if self.state.resize_detected or current_size != self.state.last_terminal_size:
+                        self.state.resize_detected = False
+                        self.state.last_terminal_size = current_size
                         self._adjust_viewport_after_resize(items)
                         live.update(self._render(), refresh=True)
 
                     # Check for auto-refresh before blocking
-                    if time.time() - self.last_refresh >= AUTO_REFRESH_INTERVAL:
+                    if time.time() - self.state.last_refresh >= AUTO_REFRESH_INTERVAL:
                         live.update(self._render(), refresh=True)
                         asyncio.run(self._load_data())
                         live.update(self._render(), refresh=True)
@@ -1005,7 +1110,7 @@ class FeatureboxTUI:
                                 result_data = self.get_selected_ticket()
                             else:
                                 result_data = self.get_selected_worktrees()
-                            self.running = False
+                            self.state.running = False
                             break
 
                         # Handle inline cleanup
@@ -1016,7 +1121,7 @@ class FeatureboxTUI:
                             continue
 
                         # Refresh data if needed
-                        if self.needs_refresh:
+                        if self.state.needs_refresh:
                             live.update(self._render(), refresh=True)
                             asyncio.run(self._load_data())
                             live.update(self._render(), refresh=True)
@@ -1025,13 +1130,15 @@ class FeatureboxTUI:
                             live.update(self._render(), refresh=True)
 
                     except KeyboardInterrupt:
-                        self.running = False
+                        self.state.running = False
                         break
 
         finally:
             # Restore original SIGWINCH handler
             if hasattr(signal, "SIGWINCH") and old_handler is not None:
                 signal.signal(signal.SIGWINCH, old_handler)
+            # Always restore terminal state to prevent broken terminal
+            restore_terminal_state(saved_terminal_state)
 
         return action, result_data
 
@@ -1089,7 +1196,7 @@ def simple_list(config: Config) -> None:
         return
 
     # Get focus info
-    focused_branch = get_focused_branch(config)
+    get_focused_branch(config)
     github_repo = config.project.github_repo
 
     table = Table(show_header=True, header_style="bold cyan")

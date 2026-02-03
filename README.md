@@ -40,7 +40,7 @@ export HOMEBREW_AUTO_UPDATE_SECS=86400
 brew upgrade fwts
 ```
 
-Check for new releases: https://github.com/laudiacay/featurebox/releases
+Check for new releases: https://github.com/laudiacay/fwts/releases
 
 ### From PyPI
 

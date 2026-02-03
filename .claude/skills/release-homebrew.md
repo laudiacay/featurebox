@@ -6,7 +6,7 @@ Release fwts to PyPI and update the Homebrew formula.
 
 1. **Build the package**
    ```bash
-   cd /Users/laudiacay/code/featurebox
+   cd /Users/laudiacay/code/fwts
    rm -rf dist/
    uv build
    ```

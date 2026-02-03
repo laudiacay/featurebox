@@ -13,10 +13,12 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib  # type: ignore[import-not-found]
 
+
 # Import paths module - but handle circular import by deferring
 def _get_global_config_path() -> Path:
     """Get global config path (avoids circular import)."""
     from fwts.paths import get_global_config_path
+
     return get_global_config_path()
 
 
@@ -113,11 +115,13 @@ class ClaudeConfig:
     enabled: bool = True
     # Commands to run to gather context (output is piped to claude)
     # Opinionated defaults: CLAUDE.md + recent commits
-    context_commands: list[str] = field(default_factory=lambda: [
-        "cat CLAUDE.md 2>/dev/null || cat .claude/CLAUDE.md 2>/dev/null || true",
-        "echo '## Recent commits on this branch:' && git log --oneline -10 2>/dev/null || true",
-        "echo '## Current git status:' && git status --short 2>/dev/null || true",
-    ])
+    context_commands: list[str] = field(
+        default_factory=lambda: [
+            "cat CLAUDE.md 2>/dev/null || cat .claude/CLAUDE.md 2>/dev/null || true",
+            "echo '## Recent commits on this branch:' && git log --oneline -10 2>/dev/null || true",
+            "echo '## Current git status:' && git status --short 2>/dev/null || true",
+        ]
+    )
     # Initial prompt/instructions to send to claude after context
     init_instructions: str = ""
     # Template for the full init message (use {context} and {ticket} placeholders)

@@ -62,11 +62,50 @@
       "Bash(brew reinstall:*)",
       "Bash(/opt/homebrew/Cellar/fwts/0.1.27/libexec/bin/pip install:*)",
       "Bash(/opt/homebrew/Cellar/fwts/0.1.27/libexec/bin/python:*)",
-      "Bash(/opt/homebrew/Cellar/fwts/0.1.27/libexec/bin/pip show fwts)"
+      "Bash(/opt/homebrew/Cellar/fwts/0.1.27/libexec/bin/pip show fwts)",
+      "Bash(fb --version:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv publish:*)",
+      "Bash(security find-generic-password:*)",
+      "Bash(keyring get:*)",
+      "Bash(cat:*)",
+      "Bash(op item list:*)",
+      "Bash(twine upload --help:*)",
+      "Bash(uv tool run twine upload:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(brew update:*)",
+      "Bash(worktrunk status:*)",
+      "Bash(worktrunk --version:*)",
+      "Bash(python -m fwts:*)",
+      "Bash(git tag:*)",
+      "Bash(git restore:*)",
+      "Bash(echo:*)",
+      "Bash(uv run:*)",
+      "Bash(command wt list statusline:*)",
+      "Bash(git -C /Users/laudiacay/code/featurebox log --oneline)",
+      "Bash(wc:*)",
+      "Bash(git -C /Users/laudiacay/code/featurebox remote -v)",
+      "Bash(lefthook install:*)",
+      "Bash(lefthook run:*)",
+      "Bash(uv sync:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "spawner"
-  ]
+  ],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -q '\\-\\-no-verify\\|\\-n '; then echo 'BLOCKED: --no-verify is not allowed. Run the hooks.' >&2; exit 1; fi"
+          }
+        ]
+      }
+    ]
+  }
 }

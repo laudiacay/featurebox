@@ -137,6 +137,16 @@ def create_session(
         check=True,
     )
 
+    # Name the window after the branch and disable automatic-rename so it stays
+    subprocess.run(
+        ["tmux", "rename-window", "-t", f"{name}:{first_window}", name],
+        check=True,
+    )
+    subprocess.run(
+        ["tmux", "set-option", "-t", name, "automatic-rename", "off"],
+        check=True,
+    )
+
 
 def attach_session(name: str) -> None:
     """Attach to an existing tmux session.
