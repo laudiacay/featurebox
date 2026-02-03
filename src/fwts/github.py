@@ -142,6 +142,67 @@ def get_pr_by_branch(branch: str, repo: str | None = None) -> PRInfo | None:
     )
 
 
+def search_pr_by_ticket(ticket_id: str, repo: str) -> PRInfo | None:
+    """Search for a PR by ticket identifier in branch name or title.
+
+    Args:
+        ticket_id: Ticket identifier like "SUP-1962"
+        repo: Repository in owner/repo format
+
+    Returns:
+        PRInfo or None if not found
+    """
+    # Search for PRs with the ticket ID in branch or title
+    args = [
+        "pr",
+        "list",
+        "--repo",
+        repo,
+        "--search",
+        ticket_id,
+        "--json",
+        "number,title,headRefName,baseRefName,state,url,reviewDecision,mergeable,isDraft",
+        "--limit",
+        "1",
+    ]
+
+    result = _run_gh(args, check=False)
+    if result.returncode != 0:
+        return None
+
+    try:
+        data = json.loads(result.stdout)
+        if not data:
+            return None
+        pr = data[0]
+    except (json.JSONDecodeError, IndexError):
+        return None
+
+    review_map = {
+        "APPROVED": ReviewState.APPROVED,
+        "CHANGES_REQUESTED": ReviewState.CHANGES_REQUESTED,
+        "REVIEW_REQUIRED": ReviewState.PENDING,
+    }
+
+    mergeable_map = {
+        "MERGEABLE": MergeableState.MERGEABLE,
+        "CONFLICTING": MergeableState.CONFLICTING,
+        "UNKNOWN": MergeableState.UNKNOWN,
+    }
+
+    return PRInfo(
+        number=pr["number"],
+        title=pr["title"],
+        branch=pr["headRefName"],
+        base_branch=pr["baseRefName"],
+        state=pr["state"].lower(),
+        url=pr["url"],
+        review_decision=review_map.get(pr.get("reviewDecision")),
+        mergeable=mergeable_map.get(pr.get("mergeable", "UNKNOWN"), MergeableState.UNKNOWN),
+        is_draft=pr.get("isDraft", False),
+    )
+
+
 def get_pr(pr_ref: str, repo: str | None = None) -> PRInfo | None:
     """Get PR info by number, URL, or branch.
 

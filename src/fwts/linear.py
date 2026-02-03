@@ -19,14 +19,17 @@ class LinearError(Exception):
 
 
 class TicketState(Enum):
-    """Linear ticket states."""
+    """Linear ticket state types.
 
-    BACKLOG = "backlog"
-    TODO = "todo"
-    IN_PROGRESS = "in_progress"
-    IN_REVIEW = "in_review"
-    DONE = "done"
-    CANCELED = "canceled"
+    These correspond to Linear's built-in state types, not custom state names.
+    Linear allows custom state names, but they always map to one of these types.
+    """
+
+    BACKLOG = "backlog"  # Linear type: backlog
+    TODO = "todo"  # Linear type: unstarted
+    IN_PROGRESS = "in_progress"  # Linear type: started
+    DONE = "done"  # Linear type: completed
+    CANCELED = "canceled"  # Linear type: canceled
 
 
 @dataclass

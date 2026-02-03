@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import random
 import subprocess
 import sys
 import termios
@@ -24,7 +25,7 @@ from rich.text import Text
 from fwts.config import Config
 from fwts.focus import get_focused_branch, has_focus
 from fwts.git import Worktree, list_worktrees
-from fwts.github import PRInfo, ReviewState, get_pr_by_branch
+from fwts.github import PRInfo, ReviewState, get_pr_by_branch, search_pr_by_ticket
 from fwts.hooks import HookResult, get_builtin_hooks, run_all_hooks
 from fwts.tmux import session_exists, session_name_from_branch
 
@@ -64,6 +65,35 @@ AUTO_REFRESH_INTERVAL = 30
 # Arrow key escape sequences
 KEY_UP = "\x1b[A"
 KEY_DOWN = "\x1b[B"
+
+# Cute startup messages
+STARTUP_MESSAGES = [
+    "🌳 branching out into productivity...",
+    "🌿 growing your worktree garden...",
+    "🪵 chopping through that backlog...",
+    "🌱 planting seeds of code...",
+    "🍃 rustling up your branches...",
+    "🌲 standing tall in the forest of features...",
+    "🪺 nesting into your worktrees...",
+    "🐿️ gathering your nuts (commits)...",
+    "🦉 whooo's ready to code?",
+    "🌻 blooming into a new feature...",
+    "🍂 raking up stale branches...",
+    "🌾 harvesting that sweet, sweet merge...",
+    "🐛 debugging the forest floor...",
+    "🦋 metamorphosing your code...",
+    "🌈 after the storm comes the deploy...",
+    "☕ caffeinating the codebase...",
+    "🎋 may your branches never conflict...",
+    "🍄 foraging for features...",
+    "🐝 busy bee mode: activated...",
+    "🌸 cherry-picking the good stuff...",
+]
+
+
+def get_startup_message() -> str:
+    """Return a random cute startup message."""
+    return random.choice(STARTUP_MESSAGES)
 
 
 class TUIMode(Enum):
@@ -158,6 +188,7 @@ class FwtsTUI:
         self.state = TUIState(mode=initial_mode)
         self._refresh_lock = threading.Lock()
         self._pending_cleanup = False
+        self._pending_focus = False
         self._cleanup_func: Callable[..., None] | None = None
 
     @property
@@ -253,11 +284,15 @@ class FwtsTUI:
                     for branch in local_branches
                 )
 
-                # Try to get PR info if we have a branch
+                # Try to get PR info - first by branch name, then by ticket search
                 pr_info = None
-                if github_repo and t.branch_name:
+                if github_repo:
                     with contextlib.suppress(Exception):
-                        pr_info = get_pr_by_branch(t.branch_name, github_repo)
+                        if t.branch_name:
+                            pr_info = get_pr_by_branch(t.branch_name, github_repo)
+                        if not pr_info:
+                            # Fallback: search by ticket identifier
+                            pr_info = search_pr_by_ticket(t.identifier, github_repo)
 
                 self.state.tickets.append(
                     TicketInfo(
@@ -274,6 +309,39 @@ class FwtsTUI:
                         pr_info=pr_info,
                     )
                 )
+
+            # Sort tickets by status workflow position, then by PR status, then priority
+            # state_type is Linear's workflow category (backlog, unstarted, started, completed, canceled)
+            type_order = {
+                "started": 0,  # In Progress (any custom state name)
+                "unstarted": 1,  # Todo
+                "backlog": 2,  # Backlog
+                "completed": 3,  # Done
+                "canceled": 4,  # Canceled
+            }
+
+            def pr_sort_key(ticket: TicketInfo) -> int:
+                """Sort by PR status: no PR < draft < open < approved < merged."""
+                pr = ticket.pr_info
+                if not pr:
+                    return 0  # No PR
+                if pr.state == "merged":
+                    return 4
+                if pr.state == "closed":
+                    return 5  # Closed without merge (least priority)
+                if pr.is_draft:
+                    return 1
+                if pr.review_decision == ReviewState.APPROVED:
+                    return 3
+                return 2  # Open, awaiting review
+
+            self.state.tickets.sort(
+                key=lambda t: (
+                    type_order.get(t.state_type.lower(), 5),
+                    pr_sort_key(t),
+                    -t.priority,
+                )
+            )
         except Exception as e:
             self.state.status_message = f"Failed to load tickets: {e}"
             self.state.status_style = "red"
@@ -297,6 +365,94 @@ class FwtsTUI:
             self.state.last_refresh = time.time()
             if not self.state.status_message or self.state.status_message == "Refreshing...":
                 self.state.status_message = None
+
+    def _background_load_tickets(self) -> None:
+        """Load tickets in background thread for faster mode switching."""
+        with contextlib.suppress(Exception):
+            asyncio.run(self._preload_tickets())
+
+    async def _preload_tickets(self) -> None:
+        """Preload tickets without affecting current view."""
+        from fwts.linear import list_my_tickets
+
+        api_key = self.config.linear.api_key
+        github_repo = self.config.project.github_repo
+
+        local_worktrees = self._get_feature_worktrees()
+        local_branches = {wt.branch.lower() for wt in local_worktrees}
+
+        try:
+            raw_tickets = await list_my_tickets(api_key)
+
+            preloaded_tickets = []
+            for t in raw_tickets:
+                has_local = any(
+                    t.identifier.lower() in branch
+                    or (t.branch_name and t.branch_name.lower() == branch)
+                    for branch in local_branches
+                )
+                pr_info = None
+                if github_repo:
+                    with contextlib.suppress(Exception):
+                        if t.branch_name:
+                            pr_info = get_pr_by_branch(t.branch_name, github_repo)
+                        if not pr_info:
+                            pr_info = search_pr_by_ticket(t.identifier, github_repo)
+
+                preloaded_tickets.append(
+                    TicketInfo(
+                        id=t.id,
+                        identifier=t.identifier,
+                        title=t.title,
+                        state=t.state,
+                        state_type=t.state_type,
+                        priority=t.priority,
+                        assignee=t.assignee,
+                        url=t.url,
+                        branch_name=t.branch_name,
+                        has_local_worktree=has_local,
+                        pr_info=pr_info,
+                    )
+                )
+
+            # Sort tickets by status workflow position, then PR status, then priority
+            type_order = {
+                "started": 0,
+                "unstarted": 1,
+                "backlog": 2,
+                "completed": 3,
+                "canceled": 4,
+            }
+
+            def pr_sort_key(ticket: TicketInfo) -> int:
+                """Sort by PR status: no PR < draft < open < approved < merged."""
+                pr = ticket.pr_info
+                if not pr:
+                    return 0
+                if pr.state == "merged":
+                    return 4
+                if pr.state == "closed":
+                    return 5
+                if pr.is_draft:
+                    return 1
+                if pr.review_decision == ReviewState.APPROVED:
+                    return 3
+                return 2
+
+            preloaded_tickets.sort(
+                key=lambda t: (
+                    type_order.get(t.state_type.lower(), 5),
+                    pr_sort_key(t),
+                    -t.priority,
+                )
+            )
+
+            # Only update if user hasn't loaded tickets yet
+            with self._refresh_lock:
+                if not self.state.tickets:
+                    self.state.tickets = preloaded_tickets
+        except Exception:
+            pass  # Silently fail
 
     def _get_current_items(self) -> list:
         """Get current list of items based on mode."""
@@ -756,7 +912,9 @@ class FwtsTUI:
                 self._pending_cleanup = True
                 return None
             elif key in ("f", "F"):
-                return "focus"
+                # Run focus inline instead of returning
+                self._pending_focus = True
+                return None
             elif key in ("l", "L"):
                 self._show_unpushed_commits()
                 return None
@@ -884,24 +1042,33 @@ class FwtsTUI:
                 time.sleep(0.3)
                 continue
 
-            # Cleanup failed - show logs and offer force option
+            # Cleanup failed - show concise error and offer force option
             logs = result.get("logs", "").strip()
             error_msg = result.get("error", "Unknown error")
 
-            # Build display message with logs
-            display_lines = [f"⚠ Cleanup failed for {branch}"]
-            if logs:
-                # Strip ANSI codes and limit lines for display
-                import re
+            # Extract the key error reason from logs
+            import re
 
-                clean_logs = re.sub(r"\x1b\[[0-9;]*m", "", logs)
-                log_lines = clean_logs.strip().split("\n")[-15:]  # Last 15 lines
-                display_lines.append("")
-                display_lines.extend(log_lines)
-            display_lines.append("")
-            display_lines.append(f"Error: {error_msg}")
-            display_lines.append("")
-            display_lines.append("Press 'f' to force cleanup, any other key to skip")
+            clean_logs = re.sub(r"\x1b\[[0-9;]*m", "", logs)
+            reason = ""
+            if "modified or untracked files" in clean_logs:
+                reason = "has uncommitted changes"
+            elif "is not a valid reference" in clean_logs:
+                reason = "branch reference invalid"
+            elif "fatal:" in clean_logs:
+                # Extract the fatal error line
+                for line in clean_logs.split("\n"):
+                    if "fatal:" in line:
+                        reason = line.strip()
+                        break
+
+            # Build compact display
+            display_lines = [
+                f"⚠ Cleanup failed: {branch}",
+                f"  Reason: {reason or error_msg}",
+                "",
+                "[f] Force cleanup  |  [any other key] Skip",
+            ]
 
             self.state.status_message = "\n".join(display_lines)
             live.update(self._render(), refresh=True)
@@ -971,6 +1138,62 @@ class FwtsTUI:
         self.state.viewport_start = 0
 
         self.clear_status()
+        live.update(self._render(), refresh=True)
+
+    def _run_inline_focus(self, live: Live) -> None:
+        """Run focus inline within the TUI, then refresh."""
+        from fwts.focus import focus_worktree
+        from fwts.lifecycle import run_lifecycle_commands
+
+        worktrees = self.get_selected_worktrees()
+        if not worktrees:
+            self.set_status("No worktree selected", "yellow")
+            return
+
+        # Focus only works on one worktree
+        info = worktrees[0]
+        branch = info.worktree.branch
+
+        self.set_status(f"Focusing on {branch}...", style="yellow")
+        live.update(self._render(), refresh=True)
+
+        # Run focus (captures output via Rich console)
+        from io import StringIO
+
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        captured = StringIO()
+
+        try:
+            sys.stdout = captured
+            sys.stderr = captured
+            success = focus_worktree(info.worktree, self.config, force=True)
+
+            # Also run on_start commands in the worktree directory
+            if self.config.lifecycle.on_start:
+                run_lifecycle_commands("on_start", info.worktree.path, self.config)
+        except Exception as e:
+            success = False
+            captured.write(f"Error: {e}\n")
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+
+        if success:
+            self.set_status(f"✓ Focused on {branch}", style="green")
+        else:
+            logs = captured.getvalue().strip()
+            # Extract key error
+            import re
+
+            clean_logs = re.sub(r"\x1b\[[0-9;]*m", "", logs)
+            short_error = clean_logs.split("\n")[-1] if clean_logs else "Unknown error"
+            self.set_status(f"⚠ Focus failed: {short_error}", style="yellow")
+
+        live.update(self._render(), refresh=True)
+
+        # Refresh data to show focus indicator
+        asyncio.run(self._load_data())
         live.update(self._render(), refresh=True)
 
     def _show_unpushed_commits(self) -> None:
@@ -1063,7 +1286,7 @@ class FwtsTUI:
             return None, None
 
         try:
-            import readchar  # type: ignore[import-not-found]
+            import readchar  # type: ignore[import-not-found] # noqa: F401
         except ImportError:
             console.print(
                 "[yellow]Install 'readchar' for interactive mode: pip install readchar[/yellow]"
@@ -1071,8 +1294,19 @@ class FwtsTUI:
             console.print("[dim]Falling back to list mode...[/dim]")
             return None, None
 
+        # Show cute startup message
+        console.print(f"[dim italic]{get_startup_message()}[/dim italic]")
+
         # Initial data load
         asyncio.run(self._load_data())
+
+        # Start background ticket loading if Linear is enabled
+        if self.config.linear.enabled and self.config.linear.api_key:
+            ticket_thread = threading.Thread(
+                target=self._background_load_tickets,
+                daemon=True,
+            )
+            ticket_thread.start()
 
         action = None
         result_data = None
@@ -1114,11 +1348,13 @@ class FwtsTUI:
                         asyncio.run(self._load_data())
                         live.update(self._render(), refresh=True)
 
-                    # Handle input - blocking read
+                    # Handle input - non-blocking read with timeout for resize/refresh checks
                     try:
-                        import readchar  # type: ignore[import-not-found]
+                        key = self._get_key_with_timeout(timeout=0.5)
 
-                        key = readchar.readkey()
+                        if key is None:
+                            # Timeout - loop back to check resize/refresh
+                            continue
 
                         action = self._handle_key(key)
 
@@ -1134,6 +1370,13 @@ class FwtsTUI:
                         if self._pending_cleanup:
                             self._pending_cleanup = False
                             self._run_inline_cleanup(live)
+                            live.update(self._render(), refresh=True)
+                            continue
+
+                        # Handle inline focus
+                        if self._pending_focus:
+                            self._pending_focus = False
+                            self._run_inline_focus(live)
                             live.update(self._render(), refresh=True)
                             continue
 
