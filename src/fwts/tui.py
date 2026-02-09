@@ -10,7 +10,6 @@ import sys
 import termios
 import threading
 import time
-import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -786,18 +785,26 @@ class FwtsTUI:
                     try:
                         subprocess.Popen(
                             ["open", item.pr_url],
+                            stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                         )
                         self.set_status(f"Opened PR #{item.pr_info.number}", "green")
                     except Exception:
-                        webbrowser.open(item.pr_url)
+                        subprocess.Popen(
+                            ["open", item.pr_url],
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            start_new_session=True,
+                        )
                 else:
                     # No PR - create one
                     try:
                         subprocess.Popen(
                             ["gh", "pr", "create", "--web"],
                             cwd=item.worktree.path,
+                            stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                         )
@@ -816,11 +823,20 @@ class FwtsTUI:
                     label = item.identifier
                 try:
                     subprocess.Popen(
-                        ["open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                        ["open", url],
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
                     )
                     self.set_status(f"Opened {label}", "green")
                 except Exception:
-                    webbrowser.open(url)
+                    subprocess.Popen(
+                        ["open", url],
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
 
     def _switch_mode(self, new_mode: TUIMode) -> None:
         """Switch to a new mode."""
