@@ -777,20 +777,18 @@ class FwtsTUI:
 
         item = items[self.state.cursor]
 
-        if self.state.mode == TUIMode.WORKTREES:
-            # Open PR URL or create one
-            if isinstance(item, WorktreeInfo):
-                if item.pr_url and item.pr_info:
-                    # PR exists - open it
-                    try:
-                        subprocess.Popen(
-                            ["open", item.pr_url],
-                            stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                        )
-                        self.set_status(f"Opened PR #{item.pr_info.number}", "green")
-                    except Exception:
+        # Re-assert cbreak mode after subprocess in case it got corrupted
+        def _rearm_cbreak() -> None:
+            import tty
+
+            with contextlib.suppress(Exception):
+                tty.setcbreak(sys.stdin.fileno())
+
+        try:
+            if self.state.mode == TUIMode.WORKTREES:
+                # Open PR URL or create one
+                if isinstance(item, WorktreeInfo):
+                    if item.pr_url and item.pr_info:
                         subprocess.Popen(
                             ["open", item.pr_url],
                             stdin=subprocess.DEVNULL,
@@ -798,38 +796,26 @@ class FwtsTUI:
                             stderr=subprocess.DEVNULL,
                             start_new_session=True,
                         )
-                else:
-                    # No PR - create one
-                    try:
+                        self.set_status(f"Opened PR #{item.pr_info.number}", "green")
+                    else:
                         subprocess.Popen(
                             ["gh", "pr", "create", "--web"],
                             cwd=item.worktree.path,
                             stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
+                            start_new_session=True,
                         )
                         self.set_status("Opening PR creation page...", "yellow")
-                    except Exception as e:
-                        self.set_status(f"Failed to open PR creation: {e}", "red")
-        else:
-            # Ticket modes
-            if isinstance(item, TicketInfo):
-                # 'p' opens PR if available, 'o' opens ticket
-                if open_pr and item.pr_info:
-                    url = item.pr_info.url
-                    label = f"PR #{item.pr_info.number}"
-                else:
-                    url = item.url
-                    label = item.identifier
-                try:
-                    subprocess.Popen(
-                        ["open", url],
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    self.set_status(f"Opened {label}", "green")
-                except Exception:
+            else:
+                # Ticket modes
+                if isinstance(item, TicketInfo):
+                    if open_pr and item.pr_info:
+                        url = item.pr_info.url
+                        label = f"PR #{item.pr_info.number}"
+                    else:
+                        url = item.url
+                        label = item.identifier
                     subprocess.Popen(
                         ["open", url],
                         stdin=subprocess.DEVNULL,
@@ -837,6 +823,11 @@ class FwtsTUI:
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
                     )
+                    self.set_status(f"Opened {label}", "green")
+        except Exception as e:
+            self.set_status(f"Failed to open: {e}", "red")
+        finally:
+            _rearm_cbreak()
 
     def _switch_mode(self, new_mode: TUIMode) -> None:
         """Switch to a new mode."""
@@ -1245,30 +1236,35 @@ class FwtsTUI:
     def _get_key_with_timeout(self, timeout: float = 0.5) -> str | None:
         """Get keyboard input with timeout.
 
-        Uses signal-based timeout with readchar to avoid terminal mode conflicts.
+        Uses select() for non-blocking reads. Expects the terminal to already
+        be in cbreak mode (set by run()).
         """
-        import signal
+        import os
+        import select as select_mod
 
-        import readchar  # type: ignore[import-not-found]
+        fd = sys.stdin.fileno()
 
-        def timeout_handler(signum, frame):
-            raise TimeoutError()
-
-        # Set up alarm signal
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.setitimer(signal.ITIMER_REAL, timeout)
-
-        try:
-            key = readchar.readkey()
-            signal.setitimer(signal.ITIMER_REAL, 0)  # Cancel alarm
-            return key
-        except TimeoutError:
+        r, _, _ = select_mod.select([fd], [], [], timeout)
+        if not r:
             return None
-        except Exception:
-            signal.setitimer(signal.ITIMER_REAL, 0)  # Cancel alarm
-            raise
-        finally:
-            signal.signal(signal.SIGALRM, old_handler)
+
+        ch = os.read(fd, 1).decode("utf-8", errors="replace")
+
+        # Handle escape sequences (arrows, etc.)
+        if ch == "\x1b":
+            r, _, _ = select_mod.select([fd], [], [], 0.05)
+            if not r:
+                return "\x1b"  # Plain Escape
+            ch2 = os.read(fd, 1).decode("utf-8", errors="replace")
+            if ch2 == "[":
+                r, _, _ = select_mod.select([fd], [], [], 0.05)
+                if r:
+                    ch3 = os.read(fd, 1).decode("utf-8", errors="replace")
+                    return "\x1b[" + ch3  # e.g. \x1b[A for Up
+                return "\x1b["
+            return "\x1b" + ch2
+
+        return ch
 
     def _adjust_viewport_after_resize(self, items: list) -> None:
         """Adjust viewport and cursor after terminal resize."""
@@ -1301,15 +1297,6 @@ class FwtsTUI:
             console.print("[yellow]TUI requires interactive terminal[/yellow]")
             return None, None
 
-        try:
-            import readchar  # type: ignore[import-not-found] # noqa: F401
-        except ImportError:
-            console.print(
-                "[yellow]Install 'readchar' for interactive mode: pip install readchar[/yellow]"
-            )
-            console.print("[dim]Falling back to list mode...[/dim]")
-            return None, None
-
         # Show cute startup message
         console.print(f"[dim italic]{get_startup_message()}[/dim italic]")
 
@@ -1327,8 +1314,15 @@ class FwtsTUI:
         action = None
         result_data = None
 
-        # Save terminal state to restore on exit
-        saved_terminal_state = save_terminal_state()
+        # Save terminal state and set cbreak mode for the entire TUI lifetime.
+        # cbreak = no echo + char-at-a-time input, but output processing preserved
+        # so Rich's \n→\r\n translation still works. This avoids readchar's
+        # per-read raw/cooked toggling which subprocesses can corrupt.
+        fd = sys.stdin.fileno()
+        saved_terminal_state = termios.tcgetattr(fd)
+        import tty
+
+        tty.setcbreak(fd)
 
         # Install SIGWINCH handler for terminal resize detection
         import signal
@@ -1414,7 +1408,7 @@ class FwtsTUI:
             if hasattr(signal, "SIGWINCH") and old_handler is not None:
                 signal.signal(signal.SIGWINCH, old_handler)
             # Always restore terminal state to prevent broken terminal
-            restore_terminal_state(saved_terminal_state)
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved_terminal_state)
 
         return action, result_data
 
